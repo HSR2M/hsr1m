@@ -111,7 +111,10 @@ bbox 프리셋은 `terrain.ISLANDS`에 `bbox=(lat0, lat1, lon0, lon1)`, `zoom`, 
 어느 섬이든 된다. 가장자리 35 px은 바다로 서서히 가라앉혀(edge fade) 절단면이 절벽처럼 보이지 않게 한다.
 간석지가 넓은 서해안은 0~0.5 m 값이 해안을 따라 줄무늬로 나타나므로 0.5 m 이상만 육지로 본다.
 
-![교동도 플라이오버](docs/gyodong_video.gif)
+교동도(반경 4.3 km, 27 km 선회, 72초)와 서검도(반경 1.2 km, 7.6 km 선회, 28초) 결과가 `docs/`에 있다.
+GIF는 추적 샷 12초 발췌이고 전체는 mp4를 볼 것.
+
+![교동도 플라이오버](docs/gyodong_video.gif) ![서검도 플라이오버](docs/seogeom_video.gif)
 
 ## 검증 결과 (이 저장소에 포함된 `docs/`)
 
