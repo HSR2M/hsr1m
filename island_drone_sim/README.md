@@ -6,8 +6,11 @@ Crazyflie 2.x 모델과 PID 제어기를 **실제 월미도·강화도 고도 �
 
 ```
 terrain.py        Terrarium 고도 타일 다운로드 -> numpy DEM -> PyBullet heightfield(충돌+시각) + 검증
+                  (중심+줌 프리셋 또는 위경도 범위 프리셋, 육지 마스크, hillshade 텍스처)
 island_aviary.py  CtrlAviary 서브클래스: plane.urdf 대신 heightfield를 지면으로 사용
-fly_island.py     산 정상을 중심으로 선회 비행 + 로그/지도/영상 생성
+follower.py       선회 경로 생성 + Crazyflie PID용 경로추종(축별 오차 제한)
+fly_island.py     산 정상을 중심으로 선회 비행 + 로그/지도/추적카메라 영상 (분석용)
+island_video.py   섬 전체를 도는 드론을 상공 3인칭 시점으로 촬영한 영상 (시연용)
 ```
 
 ## 설치 (Linux / macOS)
@@ -80,6 +83,34 @@ python fly_island.py --island wolmido --gui        # PyBullet GUI로 직접 보�
 | `--gui` / `--speedup` | off / 3 | PyBullet 창에서 실시간 보기. 카메라가 드론을 따라가며 `speedup` 배속으로 재생 |
 
 출력은 `results/<island>_path.csv`, `results/<island>_map.png`, `results/<island>_flight.mp4`.
+
+## 섬 플라이오버 영상 (`island_video.py`)
+
+교동도처럼 섬 전체를 위경도 범위로 잘라 받고, 섬 전경 선회 샷 -> 드론 뒤·위에서 따라가는 3인칭
+추적 샷 -> 수직 풀백 샷 순서로 렌더한다. 하늘·원거리 안개는 깊이/세그먼트 버퍼로 후합성하고,
+화면의 드론은 멀리서도 보이도록 키운 시각용 프록시(팔 길이 20 m)다. 물리는 그대로 Crazyflie다.
+
+```bash
+python island_video.py --island gyodong            # results/gyodong_video.mp4 (약 20분, CPU 렌더)
+python island_video.py --island seongmo --z_scale 1.2
+python island_video.py --island seogeom --radius 1200 --agl 80
+```
+
+| 인자 | 기본값 | 의미 |
+|---|---|---|
+| `--island` | gyodong | bbox 프리셋: gyodong(교동도), seogeom(서검도), seongmo(석모도). wolmido/ganghwa도 가능 |
+| `--radius` / `--agl` | 프리셋 / 120 | 선회 반경(m), 지형 위 고도(m). 프리셋의 center·radius를 쓰며 `--radius`로 덮어씀 |
+| `--sim_per_frame` / `--fps` | 2.5 / 15 | 프레임당 시뮬 시간(s). 10 m/s 비행을 37배속 타임랩스로 보여준다 |
+| `--z_scale` | 1.5 | 지형 수직 과장(평탄한 섬의 입체감). 물리·경로에도 같이 적용 |
+| `--cam_back` / `--cam_up` | 180 / 120 | 3인칭 카메라의 드론 뒤 거리·위 높이(m) |
+| `--intro_frames` / `--outro_frames` | 90 / 60 | 전경 샷·풀백 샷 길이 |
+| `--width` `--height` `--shadow` | 960 540 off | 해상도, 그림자(2배 느림) |
+
+bbox 프리셋은 `terrain.ISLANDS`에 `bbox=(lat0, lat1, lon0, lon1)`, `zoom`, `center`, `radius`를 추가하면
+어느 섬이든 된다. 가장자리 20 px은 바다로 서서히 가라앉혀(edge fade) 절단면이 절벽처럼 보이지 않게 한다.
+간석지가 넓은 서해안은 0~0.5 m 값이 해안을 따라 줄무늬로 나타나므로 0.5 m 이상만 육지로 본다.
+
+![교동도 플라이오버](docs/gyodong_video.gif)
 
 ## 검증 결과 (이 저장소에 포함된 `docs/`)
 
