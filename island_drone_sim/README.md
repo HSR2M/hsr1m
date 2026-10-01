@@ -36,10 +36,33 @@ python fly_island.py --island wolmido --gui        # PyBullet GUI로 직접 보�
 | `--agl` | 60 | 지형 위 비행고도(m). 경로의 z는 평활화된 지형 + agl |
 | `--radius` | 500 | 최고점 기준 선회 반경(m) |
 | `--speed` | 10 | 순항속도(m/s). cf2x PID는 10 m/s까지 안정, 15 m/s는 뒤집힘 |
+| `--climb_speed` | 3 | 이륙 수직상승 속도(m/s). 10 m/s로 올리면 수평 전환 때 뒤집힘 |
 | `--max_err` | 1.5 | 드론과 목표점 사이 최대 거리(m). 이보다 멀면 PID가 과도하게 기울어 추락 |
+| `--max_lag` | 8 | 드론이 경로점에 이보다 뒤처지면 경로점이 전진을 멈추고 기다림(m) |
 | `--video` | off | 추적 카메라 프레임 저장 후 ffmpeg로 mp4 생성 (프레임당 약 0.7 s) |
 
 출력은 `results/<island>_path.csv`, `results/<island>_map.png`, `results/<island>_flight.mp4`.
+
+## 검증 결과 (이 저장소에 포함된 `docs/`)
+
+| | 월미도 | 강화도(마니산) |
+|---|---|---|
+| DEM | 3x3 타일 z15, 3.8 m/px, 2.9 km² | 3x3 타일 z12, 30 m/px, 23 km² |
+| 최고점 | 110 m | 459 m |
+| 경로 | 반경 500 m 선회, 3.2 km | 반경 1,500 m 선회, 9.6 km |
+| 비행시간(시뮬) | 339 s | 987 s |
+| 순항 속도 | 10.0 m/s | 10.0 m/s |
+| 순항 지상고 (목표 60 / 80 m) | 54–66 m | 45–104 m |
+| 경로 추종 오차 최대 | 0.5 m | 0.4 m |
+| heightfield vs DEM 레이캐스트 오차 | 0.00 m | 0.00 m |
+| 물리 계산 시간(영상 제외) | 9 s | 27 s |
+
+강화도 지상고 폭이 큰 것은 경로 고도를 σ=3 px(90 m) 가우시안 평활 지형 기준으로 잡아
+날카로운 능선 위에서 실제 지형이 더 솟기 때문이다. `build_path(smooth_px=...)`로 조절한다.
+
+![월미도 비행](docs/wolmido_flight.gif) ![강화도 비행](docs/ganghwa_flight.gif)
+
+![월미도 지도](docs/wolmido_map.png)
 
 ## 데이터
 
@@ -59,7 +82,10 @@ python fly_island.py --island wolmido --gui        # PyBullet GUI로 직접 보�
    DEM과 일치하는지 확인한다(오차 0.00 m).
 3. `IslandAviary._housekeeping()`이 매 reset마다 기본 평면을 지우고 지형을 다시 올린다.
 4. `fly_island.py`는 경로를 따라 "진행거리 s"를 속도 v로 전진시키고, 드론에서 `max_err` 이내로
-   잘라낸 점을 `DSLPIDControl`에 목표로 준다. 속도는 `--accel`로 램프업한다.
+   잘라낸 점을 `DSLPIDControl`에 목표로 준다. 속도는 `--accel`로 램프업하고, 상승 구간은
+   `--climb_speed`로 따로 제한하며, 드론이 `--max_lag` 이상 뒤처지면 경로점이 기다린다.
+5. 생성 고도와 지상고는 픽셀 고도가 아니라 heightfield 표면 레이캐스트(`Terrain.surface_z`)로
+   구한다. 30 m/px 지형에서는 둘이 수 m 이상 차이 난다.
 
 ## 한계
 

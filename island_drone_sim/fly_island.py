@@ -27,7 +27,7 @@ from terrain import ISLANDS, hypsometric_texture, load_dem, verify_terrain
 
 
 def build_path(t, radius, agl, step=5.0, smooth_px=3.0):
-    """정상 남쪽 지면에서 이륙 -> 정상을 반시계로 한 바퀴 -> 제자리. 반환: (N,3) 경로점, 누적거리."""
+    """정상 남쪽 지면에서 이륙 -> 정상을 반시계로 한 바퀴 -> 제자리. 반환: (N,3) 경로점, 누적거리, 상승구간 끝 거리."""
     px, py, pz = t.peak()
     smooth = gaussian_filter(t.heights, smooth_px)
 
@@ -48,7 +48,8 @@ def build_path(t, radius, agl, step=5.0, smooth_px=3.0):
                      np.column_stack([circ, z])])
     seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
     cum = np.concatenate([[0.0], np.cumsum(seg)])
-    return pts, cum
+    climb_end = cum[len(climb) - 1]            # 수직 상승 구간이 끝나는 누적거리
+    return pts, cum, climb_end
 
 
 def carrot(pts, cum, s):
@@ -95,9 +96,11 @@ def main():
     ap.add_argument("--island", default="wolmido", choices=list(ISLANDS))
     ap.add_argument("--agl", type=float, default=60.0, help="지형 위 비행고도(m)")
     ap.add_argument("--radius", type=float, default=500.0, help="정상 기준 선회 반경(m)")
-    ap.add_argument("--speed", type=float, default=6.0, help="순항 속도(m/s)")
+    ap.add_argument("--speed", type=float, default=10.0, help="순항 속도(m/s)")
+    ap.add_argument("--climb_speed", type=float, default=3.0, help="이륙 수직상승 속도(m/s); 빠르면 수평 전환 때 뒤집힌다")
     ap.add_argument("--max_err", type=float, default=1.5, help="드론-목표점 최대 거리(m); 크면 PID가 과도하게 기울어 뒤집힌다")
     ap.add_argument("--accel", type=float, default=1.0, help="순항속도까지 가속도(m/s^2)")
+    ap.add_argument("--max_lag", type=float, default=8.0, help="드론이 경로점에 이보다 뒤처지면 경로점이 기다린다(m)")
     ap.add_argument("--ctrl_hz", type=int, default=48)
     ap.add_argument("--sim_hz", type=int, default=240)
     ap.add_argument("--video", action="store_true", help="추적 카메라 프레임을 저장해 mp4로 묶는다")
@@ -114,7 +117,7 @@ def main():
     ex, ey = t.extent_m(); px, py, pz = t.peak()
     print(f"[terrain] {args.island}: {t.cols}x{t.rows} px, {t.mpp:.1f} m/px, {ex/1000:.1f} x {ey/1000:.1f} km, peak {pz:.0f} m at ({px:.0f},{py:.0f})")
 
-    pts, cum = build_path(t, args.radius, args.agl)
+    pts, cum, climb_end = build_path(t, args.radius, args.agl)
     start = pts[0]
     print(f"[path] {len(pts)} pts, length {cum[-1]:.0f} m, cruise z {pts[-1,2]:.0f} m, est. {cum[-1]/args.speed:.0f} s at {args.speed} m/s")
 
@@ -123,6 +126,11 @@ def main():
                        pyb_freq=args.sim_hz, ctrl_freq=args.ctrl_hz, gui=args.gui, obstacles=False, user_debug_gui=False)
     client = env.getPyBulletClient()
     print(f"[terrain] raycast-vs-DEM max error {verify_terrain(t, client):.2f} m")
+    # 거친 DEM에서는 픽셀 고도와 실제 표면이 다르므로 생성 고도를 실제 표면 기준으로 다시 잡는다
+    z_surf = t.surface_z(start[0], start[1], client)
+    env.INIT_XYZS[0, 2] = z_surf + 0.1
+    pts[0, 2] = z_surf + 0.1
+    print(f"[spawn] pixel ground {start[2]-0.1:.1f} m, true surface {z_surf:.1f} m")
     ctrl = DSLPIDControl(drone_model=DroneModel.CF2X)
 
     log = {k: [] for k in ["t", "x", "y", "z", "ground", "clearance", "tx", "ty", "tz", "speed"]}
@@ -140,8 +148,10 @@ def main():
         obs, *_ = env.step(action)
         st = obs[0]; pos, vel = st[0:3], st[10:13]
         # 경로 진행거리 s를 속도 v로 전진(가속 램프). 목표점은 드론에서 max_err 이내로 잘라 PID 포화를 막는다.
-        v = min(v + args.accel * dt, args.speed)
-        s = min(s + v * dt, cum[-1])
+        v_cap = args.climb_speed if s < climb_end else args.speed
+        v = min(v + args.accel * dt, v_cap)
+        if np.linalg.norm(carrot(pts, cum, s) - pos) < args.max_lag:
+            s = min(s + v * dt, cum[-1])
         desired = carrot(pts, cum, s)
         e = desired - pos; d = np.linalg.norm(e)
         target = pos + e / d * min(d, args.max_err) if d > 1e-6 else desired
@@ -149,8 +159,8 @@ def main():
         tvel = tvel / (np.linalg.norm(tvel) + 1e-9) * v
         action[0], _, _ = ctrl.computeControlFromState(control_timestep=dt, state=st, target_pos=target,
                                                        target_vel=tvel, target_rpy=np.zeros(3))
-        g = t.height_at(pos[0], pos[1])
         if i % 4 == 0:
+            g = t.surface_z(pos[0], pos[1], client)
             for k, val in zip(log, [i * dt, pos[0], pos[1], pos[2], g, pos[2] - g, desired[0], desired[1], desired[2], np.linalg.norm(vel)]):
                 log[k].append(float(val))
         if args.video and i % frame_every == 0:
@@ -158,6 +168,8 @@ def main():
             n_frames += 1
         if i % (args.ctrl_hz * 30) == 0:
             print(f"[t={i*dt:5.0f}s] pos=({pos[0]:.0f},{pos[1]:.0f},{pos[2]:.0f}) ground={g:.0f} path {100*s/cum[-1]:.0f}% frames={n_frames} wall={time.time()-wall:.0f}s", flush=True)
+        if abs(st[7]) > 2.0 or abs(st[8]) > 2.0 or pos[2] < -1.0:
+            print(f"[abort] drone flipped or fell through terrain at t={i*dt:.1f} s, pos={np.round(pos,1)}"); break
         if s >= cum[-1] and np.linalg.norm(pts[-1] - pos) < 2.0:
             print(f"[done] reached end of path at t={i*dt:.1f} s"); break
     env.close()

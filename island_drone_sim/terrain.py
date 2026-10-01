@@ -75,6 +75,12 @@ class Terrain:
         ix, iy = self.pixel(x, y)
         return float(self.heights[iy, ix])
 
+    def surface_z(self, x: float, y: float, client: int) -> float:
+        """PyBullet heightfield의 실제 표면 높이(삼각형 보간)를 레이캐스트로 구한다.
+        height_at()은 가장 가까운 픽셀 값이라 30 m/px 지형에서는 수 m~수십 m 어긋날 수 있다."""
+        hit = p.rayTest([x, y, 10000.0], [x, y, -100.0], physicsClientId=client)[0]
+        return float(hit[3][2]) if hit[0] == self.body_id else self.height_at(x, y)
+
     def peak(self) -> tuple[float, float, float]:
         iy, ix = np.unravel_index(int(np.argmax(self.heights)), self.heights.shape)
         x, y = self.world_xy(ix, iy)
@@ -117,7 +123,10 @@ def hypsometric_texture(t: Terrain, path: str) -> str:
     cmap = plt.get_cmap("terrain")
     tex = (cmap(0.25 + 0.75 * np.clip(land, 0, 1))[..., :3] * 255).astype(np.uint8)
     tex[h <= 0.5] = (30, 90, 160)
-    Image.fromarray(np.flipud(tex)).save(path)
+    # PyBullet heightfield의 UV는 (i=0, j=0)이 이미지의 오른쪽 아래에 오도록 매핑된다.
+    # heights는 row 0 = 남쪽, col 0 = 서쪽이므로 좌우만 뒤집어 저장해야 지오메트리와 일치한다
+    # (위에서 내려본 렌더와 텍스처의 상관계수로 검증: 0.97).
+    Image.fromarray(np.fliplr(tex)).save(path)
     return path
 
 
