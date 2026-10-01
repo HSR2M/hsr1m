@@ -1,6 +1,7 @@
 """실제 섬(월미도/강화도) DEM 위에서 드론이 산 정상을 한 바퀴 도는 시뮬레이션.
 
 실행 예:
+    python fly_island.py --island wolmido --gui                 # 창을 띄워 실시간(3배속)으로 보기
     python fly_island.py --island wolmido --agl 60 --radius 500 --speed 10 --video --video_fps 1
 출력(results/):
     <island>_path.csv      시간, 위치, 목표, 지형고도, 지상고
@@ -21,6 +22,7 @@ from scipy.ndimage import gaussian_filter
 
 from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
+from gym_pybullet_drones.utils.utils import sync
 
 from island_aviary import IslandAviary
 from terrain import ISLANDS, hypsometric_texture, load_dem, verify_terrain
@@ -98,15 +100,20 @@ def main():
     ap.add_argument("--radius", type=float, default=500.0, help="정상 기준 선회 반경(m)")
     ap.add_argument("--speed", type=float, default=10.0, help="순항 속도(m/s)")
     ap.add_argument("--climb_speed", type=float, default=3.0, help="이륙 수직상승 속도(m/s); 빠르면 수평 전환 때 뒤집힌다")
-    ap.add_argument("--max_err", type=float, default=1.5, help="드론-목표점 최대 거리(m); 크면 PID가 과도하게 기울어 뒤집힌다")
+    ap.add_argument("--max_err", type=float, default=0.6, help="PID에 넘기는 수평 위치오차 상한(m); 0.6 m = 0.24 N, 기울기 약 42도")
+    ap.add_argument("--max_err_z", type=float, default=0.08, help="수직 위치오차 상한(m); 1.25 N/m 게인이라 0.1 m만 넘어도 추력이 역전")
     ap.add_argument("--accel", type=float, default=1.0, help="순항속도까지 가속도(m/s^2)")
     ap.add_argument("--max_lag", type=float, default=8.0, help="드론이 경로점에 이보다 뒤처지면 경로점이 기다린다(m)")
+    ap.add_argument("--vel_tau", type=float, default=1.0, help="목표속도 저역통과 시정수(s); 경로가 꺾일 때 급변 방지")
+    ap.add_argument("--max_vel_err", type=float, default=1.5, help="수평 속도오차 상한(m/s)")
+    ap.add_argument("--max_vel_err_z", type=float, default=0.25, help="수직 속도오차 상한(m/s)")
     ap.add_argument("--ctrl_hz", type=int, default=48)
     ap.add_argument("--sim_hz", type=int, default=240)
     ap.add_argument("--video", action="store_true", help="추적 카메라 프레임을 저장해 mp4로 묶는다")
     ap.add_argument("--video_fps", type=float, default=1.0, help="시뮬 시간 기준 프레임 수/초 (소프트웨어 렌더라 프레임당 수 초 걸림)")
     ap.add_argument("--video_w", type=int, default=480, help="영상 가로 해상도(px), 세로는 5/8")
-    ap.add_argument("--gui", action="store_true")
+    ap.add_argument("--gui", action="store_true", help="PyBullet GUI 창에서 실시간으로 보기(카메라가 드론을 따라감)")
+    ap.add_argument("--speedup", type=float, default=3.0, help="--gui일 때 실시간 대비 재생 배속")
     ap.add_argument("--out", default="results")
     ap.add_argument("--tiles", default="tiles")
     args = ap.parse_args()
@@ -140,7 +147,7 @@ def main():
         os.makedirs(fdir, exist_ok=True)
         for f in os.listdir(fdir): os.remove(os.path.join(fdir, f))
     obs, _ = env.reset()
-    action = np.zeros((1, 4)); s = 0.0; v = 0.0; dt = env.CTRL_TIMESTEP
+    action = np.zeros((1, 4)); s = 0.0; v = 0.0; dt = env.CTRL_TIMESTEP; trace = []; tvel_f = np.zeros(3)
     frame_every = max(1, int(round(args.ctrl_hz / args.video_fps)))
     total_steps = int((cum[-1] / args.speed + args.speed / args.accel + 20) * args.ctrl_hz)
     wall = time.time()
@@ -153,12 +160,24 @@ def main():
         if np.linalg.norm(carrot(pts, cum, s) - pos) < args.max_lag:
             s = min(s + v * dt, cum[-1])
         desired = carrot(pts, cum, s)
-        e = desired - pos; d = np.linalg.norm(e)
-        target = pos + e / d * min(d, args.max_err) if d > 1e-6 else desired
+        # DSLPIDControl의 게인(P=0.4/0.4/1.25 N/m, D=0.2/0.2/0.5 N/(m/s))은 27 g Crazyflie 무게
+        # 0.265 N 기준이라 오차가 조금만 커도 추력 벡터가 뒤집힌다(특히 수직). 축별로 오차를 잘라
+        # 추력 z성분이 항상 양수가 되게 한다: 0.265 - 1.25*max_err_z - 0.5*max_vel_err_z > 0.
+        e = desired - pos
+        nxy = np.linalg.norm(e[:2])
+        exy = e[:2] / nxy * min(nxy, args.max_err) if nxy > 1e-6 else e[:2]
+        ez = np.clip(e[2], -args.max_err_z, args.max_err_z)
+        target = pos + np.array([exy[0], exy[1], ez])
         tvel = carrot(pts, cum, min(s + 1.0, cum[-1])) - desired
         tvel = tvel / (np.linalg.norm(tvel) + 1e-9) * v
+        tvel_f += (tvel - tvel_f) * min(1.0, dt / args.vel_tau)      # 경로가 꺾일 때 급변 방지
+        dv = tvel_f - vel
+        nvxy = np.linalg.norm(dv[:2])
+        dvxy = dv[:2] / nvxy * min(nvxy, args.max_vel_err) if nvxy > 1e-6 else dv[:2]
+        dvz = np.clip(dv[2], -args.max_vel_err_z, args.max_vel_err_z)
+        tvel_cmd = vel + np.array([dvxy[0], dvxy[1], dvz])
         action[0], _, _ = ctrl.computeControlFromState(control_timestep=dt, state=st, target_pos=target,
-                                                       target_vel=tvel, target_rpy=np.zeros(3))
+                                                       target_vel=tvel_cmd, target_rpy=np.zeros(3))
         if i % 4 == 0:
             g = t.surface_z(pos[0], pos[1], client)
             for k, val in zip(log, [i * dt, pos[0], pos[1], pos[2], g, pos[2] - g, desired[0], desired[1], desired[2], np.linalg.norm(vel)]):
@@ -166,10 +185,21 @@ def main():
         if args.video and i % frame_every == 0:
             Image.fromarray(chase_frame(client, pos, vel, args.video_w, args.video_w * 5 // 8)).save(os.path.join(fdir, f"{n_frames:05d}.png"))
             n_frames += 1
+        if args.gui:
+            if i % 6 == 0:
+                yaw = np.degrees(np.arctan2(vel[1], vel[0])) - 90 if np.linalg.norm(vel[:2]) > 0.5 else 0.0
+                p.resetDebugVisualizerCamera(cameraDistance=12, cameraYaw=yaw, cameraPitch=-20,
+                                             cameraTargetPosition=pos.tolist(), physicsClientId=client)
+            sync(i, wall, dt / args.speedup)       # 실시간(배속) 페이싱
         if i % (args.ctrl_hz * 30) == 0:
             print(f"[t={i*dt:5.0f}s] pos=({pos[0]:.0f},{pos[1]:.0f},{pos[2]:.0f}) ground={g:.0f} path {100*s/cum[-1]:.0f}% frames={n_frames} wall={time.time()-wall:.0f}s", flush=True)
+        trace.append((i * dt, pos.copy(), st[7:10].copy(), desired.copy(), target.copy(), v, float(np.linalg.norm(vel))))
+        if len(trace) > 3 * args.ctrl_hz: trace.pop(0)
         if abs(st[7]) > 2.0 or abs(st[8]) > 2.0 or pos[2] < -1.0:
-            print(f"[abort] drone flipped or fell through terrain at t={i*dt:.1f} s, pos={np.round(pos,1)}"); break
+            print(f"[abort] drone flipped or fell through terrain at t={i*dt:.1f} s, pos={np.round(pos,1)}")
+            for tt, pp, rr, dd, tg, vv, sp in trace[::12]:
+                print(f"   t={tt:6.2f} pos={np.round(pp,1)} rpy={np.round(rr,2)} desired={np.round(dd,1)} target={np.round(tg,1)} v={vv:.1f} |vel|={sp:.1f}")
+            break
         if s >= cum[-1] and np.linalg.norm(pts[-1] - pos) < 2.0:
             print(f"[done] reached end of path at t={i*dt:.1f} s"); break
     env.close()
