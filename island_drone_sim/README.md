@@ -44,7 +44,8 @@ conda install -n drones -c conda-forge matplotlib pillow transforms3d ffmpeg -y
 conda activate drones
 python -m pip install --no-deps -e C:\dev\gym-pybullet-drones
 
-# 3) 실행 (GUI로 직접 보기)
+# 3) 실행 (GUI로 직접 보기) -- 프롬프트가 (base)가 아니라 (drones)로 시작해야 한다.
+#    새 창을 열 때마다 conda activate drones 를 먼저 실행할 것 (안 하면 No module named 'numpy').
 cd C:\dev\hsr1m\island_drone_sim
 python fly_island.py --island wolmido --gui
 python fly_island.py --island wolmido --video --video_fps 1     # 영상은 ffmpeg 필요
