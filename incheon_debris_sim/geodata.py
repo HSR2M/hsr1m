@@ -12,7 +12,7 @@ from matplotlib.path import Path
 
 from . import config as C
 
-COAST_CACHE = os.path.join(C.DATA_DIR, "coast_polygons_gshhs_f.pkl")
+COAST_CACHE = os.path.join(C.DATA_DIR, "coast_polygons_gshhs_f.pkl" if C.REGION == "incheon" else f"coast_polygons_gshhs_f_{C.REGION}.pkl")
 
 # ---------------------------------------------------------------- 좌표 변환
 M_PER_DEG_LAT = 111_000.0
@@ -96,6 +96,8 @@ def river_regions(grid):
 
 
 def river_regions_ll(LON, LAT):
+    if C.REGION != "incheon":
+        return np.zeros(np.shape(LON), bool)
     han = (LON > 126.58) & (LAT > 37.48) & (LAT < 37.80) & (LON - 126.58 > (37.80 - LAT) * 0.2)
     imjin = (LON > 126.60) & (LON < 126.82) & (LAT > 37.78)
     return han | imjin
@@ -127,7 +129,7 @@ def water_connected_to_sea(water):
 
 def build_domain(dx=C.DX, verbose=True):
     """격자 + 마스크 + 수심 + 조석 위상/진폭 보조장 생성 (캐시)."""
-    cache = os.path.join(C.DATA_DIR, f"domain_dx{int(dx)}.npz")
+    cache = os.path.join(C.DATA_DIR, f"domain_dx{int(dx)}.npz" if C.REGION == "incheon" else f"domain_{C.REGION}_dx{int(dx)}.npz")
     if os.path.exists(cache):
         d = dict(np.load(cache))
         grid = Grid(dx)
@@ -136,18 +138,22 @@ def build_domain(dx=C.DX, verbose=True):
     grid = Grid(dx)
     polys = get_coast_polygons()
     land = rasterize_land(grid, polys)
-    land = _carve_channels(grid, land)
-    land = _widen_rivers(grid, land)
+    if C.CHANNELS:
+        land = _carve_channels(grid, land)
+    if C.RIVER_DEPTH > 0:
+        land = _widen_rivers(grid, land)
     water = water_connected_to_sea(~land)
     land = ~water
     # 해안 거리 (물 셀에서 가장 가까운 육지까지, m)
     dist = ndimage.distance_transform_edt(water) * dx
     depth = synthetic_depth(grid, dist)
     depth[land] = 0.0
-    # 개방 경계: 서쪽(열 0)·남쪽(행 0)의 물 셀
+    # 개방 경계: 설정된 가장자리의 물 셀
     open_bnd = np.zeros(grid.shape, bool)
-    open_bnd[:, 0] = water[:, 0]
-    open_bnd[0, :] = water[0, :]
+    if "W" in C.OPEN_EDGES: open_bnd[:, 0] = water[:, 0]
+    if "E" in C.OPEN_EDGES: open_bnd[:, -1] = water[:, -1]
+    if "S" in C.OPEN_EDGES: open_bnd[0, :] = water[0, :]
+    if "N" in C.OPEN_EDGES: open_bnd[-1, :] = water[-1, :]
     # 조석 전파 시간 (개방경계에서 얕은물 파속으로 Dijkstra)
     travel = tidal_travel_time(grid, water, depth, open_bnd)
     # 해안 셀 (육지에 인접한 물 셀)
@@ -162,9 +168,10 @@ def build_domain(dx=C.DX, verbose=True):
 
 def synthetic_depth(grid, dist):
     """해안거리 기반 수심 모형 + 서쪽으로 갈수록 깊어짐 + 주요 수로 최소수심 보장."""
-    h = C.DEPTH_MIN + (C.DEPTH_MAX - C.DEPTH_MIN) * (1.0 - np.exp(-dist / C.DEPTH_SCALE))
-    west = (C.LON_MAX - grid.LON) / (C.LON_MAX - C.LON_MIN)   # 0(동) ~ 1(서)
-    h = h * (0.75 + 0.5 * west)
+    h = C.DEPTH_MIN + sum(a * (1.0 - np.exp(-dist / L)) for a, L in C.DEPTH_PROFILE)
+    if C.DEPTH_WEST_GRADIENT:
+        west = (C.LON_MAX - grid.LON) / (C.LON_MAX - C.LON_MIN)   # 0(동) ~ 1(서)
+        h = h * (0.75 + 0.5 * west)
     X, Y = grid.X, grid.Y
     for pts in C.CHANNELS.values():
         xs, ys = lonlat_to_xy(*np.array(pts).T)
@@ -173,7 +180,8 @@ def synthetic_depth(grid, dist):
             dmin = np.minimum(dmin, _dist_to_segment(X, Y, x0, y0, x1, y1))
         boost = C.CHANNEL_DEPTH * np.exp(-(dmin / 900.0) ** 2)
         h = np.maximum(h, boost)
-    h = np.where(river_regions(grid), np.maximum(h, C.RIVER_DEPTH), h)
+    if C.RIVER_DEPTH > 0:
+        h = np.where(river_regions(grid), np.maximum(h, C.RIVER_DEPTH), h)
     return h
 
 

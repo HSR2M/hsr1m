@@ -115,12 +115,18 @@ def offshore_density(float_density, sigma=SIGMA_CELLS):
     return ndimage.gaussian_filter(float_density.astype(np.float32), sigma)
 
 
-def residual_convergence(dom, model, t0=0.0, cycles=2, dt=300.0, bbox=None):
-    """라그랑주 잔차류: (bbox 안의) 모든 물 셀에서 출발한 추적자의 조석 2주기 순변위 / 시간. 수렴 = -div."""
+def residual_convergence(dom, model, t0=0.0, cycles=2, dt=300.0, bbox=None, stride=None):
+    """라그랑주 잔차류: (bbox 안의) 물 셀에서 출발한 추적자의 조석 2주기 순변위 / 시간. 수렴 = -div.
+    stride: 큰 격자(100만 셀 이상)에서는 stride 칸마다 추적자를 두고 결과를 보간한다."""
     from .currents import bilinear
     g = dom["grid"]; w = dom["water"].copy()
     if bbox is not None:
         w &= (g.LON >= bbox[0]) & (g.LON <= bbox[1]) & (g.LAT >= bbox[2]) & (g.LAT <= bbox[3])
+    if stride is None:
+        stride = 1 if w.sum() < 400000 else int(np.ceil(np.sqrt(w.sum() / 150000)))
+    if stride > 1:
+        sub = np.zeros(g.shape, bool); sub[::stride, ::stride] = True
+        w &= sub
     X, Y = g.X[w].astype(np.float64), g.Y[w].astype(np.float64)
     x, y = X.copy(), Y.copy()
     T = cycles * C.M2_PERIOD
@@ -136,11 +142,27 @@ def residual_convergence(dom, model, t0=0.0, cycles=2, dt=300.0, bbox=None):
         x = x + dt * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]) / 6
         y = y + dt * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]) / 6
         uv0 = uv2
+    ures_tr = (x - X) / T; vres_tr = (y - Y) / T
+    left_tr = (x < 0) | (y < 0) | (x > g.nx * g.dx) | (y > g.ny * g.dx)   # 영역을 벗어난 추적자
+    ures_tr[left_tr] = 0.0; vres_tr[left_tr] = 0.0
     ures = np.zeros(g.shape, np.float32); vres = np.zeros(g.shape, np.float32)
-    ures[w] = (x - X) / T; vres[w] = (y - Y) / T
-    # 개방경계(서·남) 6 km 이내와 영역을 벗어난 추적자는 경계조건의 영향이라 제외
-    near_bnd = (g.X < 6000) | (g.Y < 6000)
-    left = np.zeros(g.shape, bool); left[w] = (x < 0) | (y < 0) | (x > g.nx * g.dx) | (y > g.ny * g.dx)
+    ures[w] = ures_tr; vres[w] = vres_tr
+    left = np.zeros(g.shape, bool); left[w] = left_tr
+    if stride > 1:   # 추적자 사이를 보간해 전체 격자로
+        from scipy.interpolate import griddata
+        pts = np.column_stack([g.X[w], g.Y[w]])
+        full = dom["water"] if bbox is None else (dom["water"] & (g.LON >= bbox[0]) & (g.LON <= bbox[1]) & (g.LAT >= bbox[2]) & (g.LAT <= bbox[3]))
+        q = np.column_stack([g.X[full], g.Y[full]])
+        ures[full] = griddata(pts, ures_tr, q, method="linear", fill_value=0.0)
+        vres[full] = griddata(pts, vres_tr, q, method="linear", fill_value=0.0)
+        left[full] = griddata(pts, left_tr.astype(np.float32), q, method="nearest") > 0.5
+        w = full
+    # 개방경계 6 km 이내와 영역을 벗어난 추적자는 경계조건의 영향이라 제외
+    near_bnd = np.zeros(g.shape, bool)
+    if "W" in C.OPEN_EDGES: near_bnd |= g.X < 6000
+    if "S" in C.OPEN_EDGES: near_bnd |= g.Y < 6000
+    if "E" in C.OPEN_EDGES: near_bnd |= g.X > g.nx * g.dx - 6000
+    if "N" in C.OPEN_EDGES: near_bnd |= g.Y > g.ny * g.dx - 6000
     bad = near_bnd | left
     ures[bad] = 0; vres[bad] = 0
     us = ndimage.gaussian_filter(ures, 2); vs = ndimage.gaussian_filter(vres, 2)

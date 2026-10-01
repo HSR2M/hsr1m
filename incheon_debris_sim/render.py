@@ -30,9 +30,7 @@ TRAIL, TRACER_AGE = 8, 110
 SPEED_CMAP = LinearSegmentedColormap.from_list("flow", ["#7fb3ff", "#dff1ff", "#ffffff", "#fff4a0", "#ffb347"])
 RED = "#ff2020"
 OUTLINE = [pe.withStroke(linewidth=3, foreground="black")]
-FOOTNOTE = ("근거: 조류 = 연속방정식 기반 조석(M2+S2) 포텐셜 흐름 모델(GSHHG 해안선, 수심 모형, 한강·임진강 유량),\n"
-            "쓰레기 = 라그랑주 입자추적(RK4) + 풍압 1.5 % + 확산 10 m²/s + 갯벌 좌초/재부유 확률 모형.\n"
-            "교육용 모의 결과이며 실제 집적 위치는 실측 해류(국립해양조사원·CMEMS)·수심·바람 자료로 검증이 필요합니다.")
+FOOTNOTE = C.FOOTNOTE
 
 
 def data_path(name):
@@ -48,7 +46,10 @@ def plan_frames(snap_t, model, dt_vis):
     for f in range(N_TITLE):
         seg.append(0); t_sim.append(t_lw); k_snap.append(0); dt_tr.append(dt_vis)
     for f in range(N_TIDE):
-        seg.append(1); t_sim.append(t_lw + f / N_TIDE * C.M2_PERIOD); k_snap.append(0); dt_tr.append(C.M2_PERIOD / N_TIDE)
+        if C.SEG1_MODE == "frozen":   # 시각 고정, 유선만 애니메이션 (외양: 조류가 작아 배경 흐름 패턴을 보여줌)
+            seg.append(1); t_sim.append(t_lw); k_snap.append(0); dt_tr.append(dt_vis)
+        else:
+            seg.append(1); t_sim.append(t_lw + f / N_TIDE * C.M2_PERIOD); k_snap.append(0); dt_tr.append(C.M2_PERIOD / N_TIDE)
     for k in range(len(snap_t)):
         seg.append(2); t_sim.append(float(snap_t[k])); k_snap.append(k); dt_tr.append(dt_vis)
     for f in range(N_FINAL):
@@ -123,12 +124,10 @@ def regional_scene(dom, res, an):
     img, bbox, credit = B.get_basemap(dom)
     g = dom["grid"]
     return dict(name="regional", view=B.DEFAULT_BBOX, basemap=img, credit=credit, labels=C.PLACE_LABELS, show_sources=True,
-                title="인천 · 강화도 연안\n조류 흐름과 해양쓰레기 집적 시뮬레이션",
-                subtitle="조석(M2+S2) 포텐셜 흐름 모델 · 라그랑주 입자추적 · 30일 모의",
-                panel_title="인천·강화 연안 조류와 해양쓰레기 집적 시뮬레이션", scalebar_km=10,
+                title=C.TITLE, subtitle=C.SUBTITLE, panel_title=C.PANEL_TITLE, scalebar_km=C.SCALEBAR_KM,
                 segs=an["segs"], rank=an["rank"][:6], off_lon=g.x / G.M_PER_DEG_LON + C.LON_MIN, off_lat=g.y / G.M_PER_DEG_LAT + C.LAT_MIN,
                 off_val=an["offshore"], off_thr=an["offshore_thr"], prog=_regional_prog(dom, res, an), idx=np.arange(res["snap_xy"].shape[1]),
-                stats_mode="global", n_tracer=2600, dt_vis=150.0, line_fraction="상위 15 %")
+                stats_mode="global", n_tracer=2600, dt_vis=C.DT_VIS, line_fraction="상위 15 %")
 
 
 def _regional_prog(dom, res, an):
@@ -151,7 +150,7 @@ def island_scene(dom, res, ian):
     inv = (lon >= view[0]) & (lon <= view[1]) & (lat >= view[2]) & (lat <= view[3]) & (res["snap_state"] >= 1) & (res["snap_state"] <= 2)
     idx = np.flatnonzero(inv.any(axis=0))
     width_km = (view[1] - view[0]) * G.M_PER_DEG_LON / 1000
-    dt_vis = float(np.clip(150.0 * width_km / 97.0 * 2.5, 20.0, 150.0))
+    dt_vis = float(np.clip(C.DT_VIS * width_km / ((C.LON_MAX - C.LON_MIN) * G.M_PER_DEG_LON / 1000) * 2.5, C.DT_VIS / 8, C.DT_VIS))
     pct = int(round(isl["top_fraction"] * 100))
     return dict(name=ian["key"], view=view, basemap=img, credit=credit, labels=isl["labels"], show_sources=False,
                 title=f"{isl['name']} 해안\n해양쓰레기 집적 시뮬레이션",
@@ -182,6 +181,10 @@ def prepare(dom, model, res, scene):
              prog=scene["prog"], eta_t=eta_t, eta=model.sea_level(eta_t), wind=res["wind"],
              stage=np.array([s[0] for s in stages]), spring=np.array([s[1] for s in stages]),
              han_q=np.array([model.han_discharge(t) for t in t_sim]),
+             river_label=(C.RIVER_LABEL or ""), flow_word=C.FLOW_WORD, tide_station=C.TIDE_STATION[0], eta_ylim=C.ETA_YLIM,
+             speed_vmax=C.SPEED_VMAX, seg_names=np.array([C.SEG_NAMES[1], C.SEG_NAMES[2], C.SEG_NAMES[3]]),
+             hours_per_sec=C.SNAP_DT / 3600.0 * FPS, seg1_realtime=(C.SEG1_MODE != "frozen"), footnote=C.FOOTNOTE,
+             particle_size=C.PARTICLE_SIZE,
              seg_lon=np.array([s["lon"] for s in segs], dtype=object), seg_lat=np.array([s["lat"] for s in segs], dtype=object),
              seg_level=np.array([s["level"] for s in segs], float),
              rank_names=np.array([e["name"] for e in scene["rank"]]), rank_lon=np.array([e["lon"] for e in scene["rank"]], float),
@@ -232,16 +235,18 @@ class FrameRenderer:
         self.lc_bright = LineCollection([], linewidths=1.5, alpha=0.8, zorder=4, capstyle="round")
         ax.add_collection(self.lc_dim); ax.add_collection(self.lc_bright)
         # 쓰레기
-        self.sc_float = ax.scatter([], [], s=7, c="#ffa726", edgecolors="none", alpha=0.9, zorder=5)
+        self.sc_float = ax.scatter([], [], s=float(d["particle_size"]), c="#ffa726", edgecolors="none", alpha=0.9, zorder=5)
         self.sc_beach = ax.scatter([], [], s=2.5, c="#4a0a0a", edgecolors="none", alpha=0.45, zorder=5)
         # 발생원
         self.src_art = []
         if bool(d["show_sources"]):
             for s in C.SOURCES:
-                lon, lat = {"point": s.get("lonlat"), "han_inlet": (126.80, 37.60), "imjin_inlet": (126.72, 37.86), "offshore": (125.98, 37.30)}[s["kind"]]
+                lon, lat = s.get("marker") or {"point": s.get("lonlat"), "han_inlet": (126.80, 37.60), "imjin_inlet": (126.72, 37.86), "offshore": (125.98, 37.30)}[s["kind"]]
                 m, = ax.plot(lon, lat, marker="o", ms=9, mfc="#ffd54f", mec="black", mew=1.2, ls="none", zorder=8)
-                t = ax.text(lon, lat - 0.018, "▲ " + s["name"], color="#ffe082", fontsize=9, ha="center", va="top", zorder=8, path_effects=OUTLINE)
-                self.src_art += [m, t]
+                self.src_art.append(m)
+                if s["name"]:
+                    t = ax.text(lon, lat - 0.02 * (view[3] - view[2]), "▲ " + s["name"], color="#ffe082", fontsize=9, ha="center", va="top", zorder=8, path_effects=OUTLINE)
+                    self.src_art.append(t)
         # 집적 라인
         segs = [np.column_stack([lo, la]) for lo, la in zip(d["seg_lon"], d["seg_lat"])]
         self.level = np.asarray(d["seg_level"], float)
@@ -277,7 +282,7 @@ class FrameRenderer:
         self.ax_eta.tick_params(colors="#90a4ae", labelsize=9)
         for sp in self.ax_eta.spines.values():
             sp.set_edgecolor("#37474f")
-        self.ax_eta.set_title("모델 조위 (인천항, m)", color="#b0bec5", fontsize=10, loc="left", pad=4)
+        self.ax_eta.set_title(f"모델 조위 ({d['tide_station']}, m)", color="#b0bec5", fontsize=10, loc="left", pad=4)
         self.eta_line, = self.ax_eta.plot([], [], color="#4fc3f7", lw=1.5)
         self.eta_dot, = self.ax_eta.plot([], [], "o", color="#ffeb3b", ms=7)
         self.ax_eta.axhline(0, color="#37474f", lw=0.8)
@@ -288,7 +293,7 @@ class FrameRenderer:
         self.t_wind = fig.text(x0 + 0.3675, 0.49, "", color="#b0bec5", fontsize=10, ha="center", va="top")
         y = 0.615
         fig.text(x0, y, "범례", color="white", fontsize=13, fontweight="bold", va="center")
-        items = [("line", "#dff1ff", "조류 흐름(스트리크, 색=유속)"), ("dot", "#ffa726", "부유 쓰레기 입자"),
+        items = [("line", "#dff1ff", f"{d['flow_word']} 흐름(스트리크, 색=유속)"), ("dot", "#ffa726", "부유 쓰레기 입자"),
                  ("dot", "#8e0000", "좌초(해안 집적) 입자"), ("redline", RED, f"집적 예상 해안 (좌초 밀도 {d['line_fraction']}, 빨간 반투명 라인)"),
                  ("dash", RED, "해상 체류 밀도 상위 5 % (수렴역)")]
         if bool(d["show_sources"]):
@@ -307,9 +312,10 @@ class FrameRenderer:
                 fig.add_artist(plt.Line2D([x0 + 0.0175], [yy], marker="o", mfc=col, mec="black", ms=8, ls="none"))
             fig.text(x0 + 0.04, yy, label, color="#eceff1", fontsize=11, va="center")
         self.ax_cb = fig.add_axes([x0 + 0.005, 0.400, 0.25, 0.018])
-        self.ax_cb.imshow(np.linspace(0, 1, 256)[None, :], aspect="auto", cmap=SPEED_CMAP, extent=[0, 2, 0, 1])
+        vmax = float(d["speed_vmax"])
+        self.ax_cb.imshow(np.linspace(0, 1, 256)[None, :], aspect="auto", cmap=SPEED_CMAP, extent=[0, vmax, 0, 1])
         self.ax_cb.set_yticks([]); self.ax_cb.tick_params(colors="#b0bec5", labelsize=9)
-        self.ax_cb.set_xticks([0, 0.5, 1, 1.5, 2])
+        self.ax_cb.set_xticks(np.linspace(0, vmax, 5))
         for sp in self.ax_cb.spines.values():
             sp.set_edgecolor("#37474f")
         fig.text(x0 + 0.26, 0.409, "유속 (m/s)", color="#b0bec5", fontsize=10, va="center")
@@ -323,7 +329,7 @@ class FrameRenderer:
         self.t_rel = fig.text(x0, 0.345, "", color="#b0bec5", fontsize=11, va="center")
         self.t_rank_title = fig.text(x0, 0.200, "", color="white", fontsize=13, fontweight="bold", va="center")
         self.t_rank = fig.text(x0, 0.182, "", color="#ffcdd2", fontsize=11, va="top", linespacing=1.3)
-        fig.text(x0, 0.042, FOOTNOTE, color="#78909c", fontsize=8.8, va="center", linespacing=1.5)
+        fig.text(x0, 0.042, str(d["footnote"]), color="#78909c", fontsize=8.8, va="center", linespacing=1.5)
 
     # ------------------------------------------------------------ 프레임 갱신
     def draw(self, f):
@@ -333,7 +339,7 @@ class FrameRenderer:
         P = d["tr_pos"][f0:f + 1]
         age = d["tr_age"][f]; L = P.shape[0]
         valid = np.minimum(age, L).astype(int)
-        cols = SPEED_CMAP(np.clip(d["tr_spd"][f].astype(np.float32) / 2.0, 0, 1))
+        cols = SPEED_CMAP(np.clip(d["tr_spd"][f].astype(np.float32) / float(d["speed_vmax"]), 0, 1))
         lonP = P[..., 0] / G.M_PER_DEG_LON + C.LON_MIN; latP = P[..., 1] / G.M_PER_DEG_LAT + C.LAT_MIN
         segs_b, segs_d, cb, cd = [], [], [], []
         for n in range(P.shape[1]):
@@ -369,19 +375,22 @@ class FrameRenderer:
             for tx in self.rank_texts:
                 tx.set_visible(True)
         self.title_rect.set_visible(seg == 0); self.title_txt.set_visible(seg == 0); self.title_sub.set_visible(seg == 0)
-        names = {0: "", 1: "1부 · 조류(밀물·썰물) 흐름 — 한 조석주기", 2: "2부 · 쓰레기 이동과 해안 좌초 — 30일 타임랩스", 3: "3부 · 집적 예상 해안 (빨간 반투명 라인)"}
+        names = {0: "", 1: str(d["seg_names"][0]), 2: str(d["seg_names"][1]), 3: str(d["seg_names"][2])}
         self.t_seg.set_text(names[seg])
         day = int(t // 86400); hh = int((t % 86400) // 3600); mm = int((t % 3600) // 60)
-        speed_note = "(실시간의 2,500배)" if seg == 1 else "(1초 = 20시간)" if seg == 2 else ""
+        hps = float(d["hours_per_sec"])
+        speed_note = ("(실시간의 2,500배)" if bool(d["seg1_realtime"]) else "(유선 애니메이션, 시각 고정)") if seg == 1 else f"(1초 = {hps:.0f}시간)" if seg == 2 else ""
         self.t_time.set_text(f"모의 시간  D+{day:02d}  {hh:02d}:{mm:02d}  {speed_note}")
-        self.t_tide.set_text(f"조석 상태: {d['stage'][f]} · {d['spring'][f]}     한강 유량 {float(d['han_q'][f]):,.0f} m³/s")
-        if seg == 1:
+        river = f"     {d['river_label']} {float(d['han_q'][f]):,.0f} m³/s" if str(d["river_label"]) else ""
+        self.t_tide.set_text(f"조석 상태: {d['stage'][f]} · {d['spring'][f]}{river}")
+        if seg == 1 and bool(d["seg1_realtime"]):
             t0, t1 = d["t_sim"][N_TITLE], d["t_sim"][N_TITLE] + C.M2_PERIOD
         else:
             t0, t1 = t - 1.5 * 86400, t + 1.5 * 86400
         m = (d["eta_t"] >= t0) & (d["eta_t"] <= t1)
         self.eta_line.set_data(d["eta_t"][m] / 3600, d["eta"][m]); self.eta_dot.set_data([t / 3600], [float(np.interp(t, d["eta_t"], d["eta"]))])
-        self.ax_eta.set_xlim(t0 / 3600, t1 / 3600); self.ax_eta.set_ylim(-4.2, 4.2); self.ax_eta.set_xlabel("경과 시간 (h)", color="#90a4ae", fontsize=9)
+        yl = float(d["eta_ylim"])
+        self.ax_eta.set_xlim(t0 / 3600, t1 / 3600); self.ax_eta.set_ylim(-yl, yl); self.ax_eta.set_xlabel("경과 시간 (h)", color="#90a4ae", fontsize=9)
         wx, wy = d["wind"][int(t // 3600) % len(d["wind"])]
         ws = float(np.hypot(wx, wy)); ang = np.arctan2(wy, wx); r = 0.75 * min(ws / 6.0, 1.0) + 0.1
         self.wind_arrow.xy = (r * np.cos(ang), r * np.sin(ang)); self.wind_arrow.set_position((-r * np.cos(ang), -r * np.sin(ang)))
@@ -472,7 +481,7 @@ def hotspot_figure(dom, an, path=None):
     fig, ax = plt.subplots(figsize=(13, 13.3), dpi=150)
     ax.imshow(img, extent=[C.LON_MIN, C.LON_MAX, C.LAT_MIN, C.LAT_MAX], aspect=G.M_PER_DEG_LAT / G.M_PER_DEG_LON, interpolation="bilinear")
     g = dom["grid"]
-    _draw_residual(ax, g, an)
+    _draw_residual(ax, g, an, step=max(2, int(round((2000 if C.REGION == "incheon" else 12000) / g.dx))), scale=1.5 if C.REGION == "incheon" else 6.0)
     ax.contour(g.LON, g.LAT, an["offshore"], levels=[an["offshore_thr"]], colors=[RED], linestyles="--", linewidths=1.6, alpha=0.7)
     _draw_segs(ax, an["segs"])
     for name, lon, lat, fs in C.PLACE_LABELS:
@@ -481,7 +490,7 @@ def hotspot_figure(dom, an, path=None):
     ax.set_xlim(C.LON_MIN, C.LON_MAX); ax.set_ylim(C.LAT_MIN, C.LAT_MAX)
     ax.set_xlabel("경도"); ax.set_ylabel("위도")
     ax.set_title("해양쓰레기 집적 예상 해안 (빨간 반투명 라인 = 좌초 밀도 상위 15 %)\n"
-                 "점선 = 해상 체류 밀도 상위 5 %, 분홍 음영 = 조석 잔차류 수렴역(∇·u < 0), 흰 화살표 = 잔차류", fontsize=12)
+                 "점선 = 해상 체류 밀도 상위 5 %, 분홍 음영 = 잔차류 수렴역(∇·u < 0), 흰 화살표 = 잔차류", fontsize=12)
     txt = "\n".join(f"{n + 1}. {e['name']}  ({e['length_km']:.1f} km)" for n, e in enumerate(an["rank"][:8]))
     ax.text(0.015, 0.015, "집적 예상 상위 해안 (좌초 밀도 순)\n" + txt, transform=ax.transAxes, va="bottom", fontsize=10.5, color="white",
             bbox=dict(fc="black", alpha=0.6, ec="none"))
@@ -556,4 +565,6 @@ if __name__ == "__main__":
     if "--stills" in sys.argv:
         print(render_stills(dpath, [30, N_TITLE + 200, N_TITLE + N_TIDE + 400, n - 10]))
     else:
-        render_video(n, dpath, os.path.join(C.OUT_DIR, "incheon_debris_simulation.mp4"), workers=int(os.environ.get("WORKERS", "4")))
+        out = os.path.join(C.OUT_DIR, "incheon_debris_simulation.mp4" if C.REGION == "incheon" else f"{C.REGION}_debris_simulation.mp4")
+        render_video(n, dpath, out, workers=int(os.environ.get("WORKERS", "4")))
+        print(render_stills(dpath, [N_TITLE + 300, N_TITLE + N_TIDE + 250, N_TITLE + N_TIDE + 700, n - 10], prefix="frame"))

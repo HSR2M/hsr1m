@@ -11,17 +11,7 @@ from . import config as C
 from . import geodata as G
 
 
-def make_wind_series(days, seed=1):
-    """시간별 바람(동향, 북향 m/s): 평균 + AR(1) 일변동 (상관시간 2일)."""
-    rng = np.random.default_rng(seed)
-    n = int(days * 24) + 48
-    a = np.exp(-1.0 / 48.0)
-    s = C.WIND_SIGMA * np.sqrt(1 - a * a)
-    w = np.zeros((n, 2))
-    for k in range(1, n):
-        w[k] = a * w[k - 1] + s * rng.standard_normal(2)
-    w[:, 0] += C.WIND_MEAN[0]; w[:, 1] += C.WIND_MEAN[1]
-    return w  # index = hour
+from .currents import make_wind_series  # noqa: F401  (호환용)
 
 
 class DebrisSimulation:
@@ -29,7 +19,9 @@ class DebrisSimulation:
         self.dom, self.model, self.grid = dom, model, dom["grid"]
         self.n, self.days, self.dt = n, days, dt
         self.rng = np.random.default_rng(seed)
-        self.wind = make_wind_series(days, seed + 1)
+        self.wind = getattr(model, "wind", None)
+        if self.wind is None:
+            self.wind = make_wind_series(days, seed + 1)
         self.verbose = verbose
         self._init_particles()
         self.river_grid = G.river_regions(self.grid)
@@ -46,7 +38,7 @@ class DebrisSimulation:
         fr = np.array([s["frac"] for s in C.SOURCES]); fr /= fr.sum()
         counts = np.round(fr * n).astype(int); counts[-1] = n - counts[:-1].sum()
         x = np.zeros(n); y = np.zeros(n); t_rel = np.zeros(n); src = np.zeros(n, np.int16)
-        han, imjin = self.model.river_inlets()
+        han, imjin = self.model.river_inlets() if hasattr(self.model, "river_inlets") else (np.zeros(g.shape, bool),) * 2
         k = 0
         for sid, (s, cnt) in enumerate(zip(C.SOURCES, counts)):
             sl = slice(k, k + cnt); k += cnt
@@ -79,7 +71,24 @@ class DebrisSimulation:
                 x[sl] = (jj + self.rng.random(cnt)) * g.dx
                 y[sl] = (ii + self.rng.random(cnt)) * g.dx
                 t_rel[sl] = self.rng.random(cnt) * T
-            else:  # offshore: 서쪽 외해에 떠 있는 황해 유래 쓰레기
+            elif s["kind"] == "inflow":   # 개방경계 띠에서 계속 유입 (외양 쓰레기)
+                m = np.zeros(g.shape, bool)
+                for lon0, lon1, lat0, lat1 in s["bands"]:
+                    m |= (g.LON >= lon0) & (g.LON <= lon1) & (g.LAT >= lat0) & (g.LAT <= lat1)
+                cand = np.flatnonzero((w & m).ravel())
+                pick = self.rng.choice(cand, cnt)
+                ii, jj = np.unravel_index(pick, g.shape)
+                x[sl] = (jj + self.rng.random(cnt)) * g.dx
+                y[sl] = (ii + self.rng.random(cnt)) * g.dx
+                t_rel[sl] = self.rng.random(cnt) * T * 0.7
+            elif s["kind"] == "ambient":  # 모의 시작 시 해역 전체에 떠 있는 쓰레기
+                cand = np.flatnonzero(w.ravel())
+                pick = self.rng.choice(cand, cnt)
+                ii, jj = np.unravel_index(pick, g.shape)
+                x[sl] = (jj + self.rng.random(cnt)) * g.dx
+                y[sl] = (ii + self.rng.random(cnt)) * g.dx
+                t_rel[sl] = self.rng.random(cnt) * 86400.0
+            else:  # offshore: 서쪽 외해에 떠 있는 황해 유래 쓰레기 (인천)
                 cand = np.flatnonzero((w & (g.LON < 126.25) & (g.LON > 125.90) & (g.LAT > 37.10)).ravel())
                 pick = self.rng.choice(cand, cnt)
                 ii, jj = np.unravel_index(pick, g.shape)

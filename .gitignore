@@ -1,8 +1,8 @@
 __pycache__/
 *.pyc
-output/_render_data*.npz
-output/_chunks*/
-output/sim_results*.npz
-output/test_*.png
-output/still_*.png
-data/domain_dx*.npz
+output/**/_render_data*.npz
+output/**/_chunks*/
+output/**/sim_results*.npz
+output/**/test_*.png
+output/**/still_*.png
+data/domain_*.npz

@@ -4,6 +4,7 @@ python run_all.py                      # 모든 단계
 python run_all.py --nc data/currents.nc  # 실측 해류(NetCDF) 사용
 python run_all.py --skip-sim           # 기존 output/sim_results.npz 로 영상만 다시 제작
 python run_all.py --islands gyodong seogeom   # 섬 상세 영상도 제작 (100 m 격자, 200,000 입자 모의 추가)
+REGION=hawaii python run_all.py        # 다른 지역 (regions/hawaii.py) — 출력은 output/hawaii/
 """
 import os
 import sys
@@ -37,7 +38,8 @@ def main():
     an = A.analyze(dom, res, model=model)
     R.hotspot_figure(dom, an)
     n, dpath = R.prepare(dom, model, res, R.regional_scene(dom, res, an))
-    R.render_video(n, dpath, os.path.join(C.OUT_DIR, "incheon_debris_simulation.mp4"), workers=a.workers)
+    out = os.path.join(C.OUT_DIR, "incheon_debris_simulation.mp4" if C.REGION == "incheon" else f"{C.REGION}_debris_simulation.mp4")
+    R.render_video(n, dpath, out, workers=a.workers)
     if a.islands:
         from incheon_debris_sim import island as I
         island_res = os.path.join(C.OUT_DIR, "sim_results_dx100.npz")

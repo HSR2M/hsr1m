@@ -101,6 +101,7 @@ def fetch_satellite_basemap(source="esri", zoom=12, out_w=2400, path=SAT_PATH, b
 def _noise(shape, scales, rng):
     f = np.zeros(shape, np.float32)
     for s, a in scales:
+        s = max(float(s), 1.5)
         f += a * ndimage.gaussian_filter(rng.standard_normal(shape).astype(np.float32), s) * s
     return f / (np.abs(f).max() + 1e-9)
 
@@ -148,32 +149,27 @@ def render_stylized_basemap(dom, out_w=2400, path=STY_PATH, seed=3, bbox=DEFAULT
     n1 = _noise((out_h, out_w), [(3 * px_scale, 1.0), (12 * px_scale, 1.0), (40 * px_scale, 1.0)], rng)
     n2 = _noise((out_h, out_w), [(2 * px_scale, 1.0), (8 * px_scale, 1.0)], rng)
     # --- 바다: 탁한 연안수(경기만 특유의 황갈색 부유사) → 외해 청색
-    shallow = np.array([96, 128, 138]); deep = np.array([14, 44, 78])
-    f = np.clip(depth / 30.0, 0, 1)[..., None]
+    shallow = np.array(C.SEA_SHALLOW_RGB); deep = np.array(C.SEA_DEEP_RGB)
+    f = np.clip(np.sqrt(depth / C.SEA_DEPTH_FULL), 0, 1)[..., None]
     sea = shallow * (1 - f) + deep * f
     sea = sea * (1 + 0.10 * n1[..., None]) + 6 * n2[..., None]
     # --- 갯벌: 해안 거리 < 폭 (지역별 폭 다름)
-    flat_boxes = [(126.33, 126.55, 37.555, 37.64), (126.37, 126.55, 37.49, 37.57), (126.33, 126.43, 37.40, 37.52),
-                  (126.56, 126.70, 37.31, 37.47), (126.50, 126.78, 37.22, 37.33), (126.42, 126.62, 37.74, 37.80),
-                  (126.20, 126.34, 37.60, 37.70), (126.10, 126.30, 37.72, 37.86)]
-    fw = np.where(_box_mask(LON, LAT, flat_boxes), 2300.0, 650.0)
+    fw = np.where(_box_mask(LON, LAT, C.FLAT_BOXES), C.FLAT_WIDTH_WIDE, C.FLAT_WIDTH_DEFAULT)
     fw = ndimage.gaussian_filter(fw, 25 * px_scale) * (1 + 0.35 * n1)
-    flat = (~land) & (dist_w < fw)
+    flat = (~land) & (dist_w < fw) & (fw > 1)
     edge = np.clip((fw - dist_w) / np.maximum(0.35 * fw, 1), 0, 1)
     mud = np.array([150, 138, 112]) * (1 + 0.12 * n2[..., None])
     sea = np.where(flat[..., None], sea * (1 - edge[..., None]) + mud * edge[..., None], sea)
     img[~land] = sea[~land]
     # --- 육지: 식생 녹색/갈색 혼합 + 능선 음영 + 도시 회색
-    veg = np.array([78, 104, 60]); soil = np.array([128, 118, 86]); urban = np.array([150, 150, 146])
+    veg = np.array(C.LAND_VEG_RGB); soil = np.array(C.LAND_SOIL_RGB); urban = np.array([150, 150, 146])
     mix = np.clip(0.5 + 0.9 * n1, 0, 1)[..., None]
     landc = veg * (1 - mix) + soil * mix
-    elev = ndimage.gaussian_filter(np.clip(dist_l, 0, 6000) / 6000.0 * (1 + 0.8 * n1), 4 * px_scale)
+    elev = ndimage.gaussian_filter(np.clip(dist_l, 0, C.ELEV_SCALE_M) / C.ELEV_SCALE_M * (1 + 0.8 * n1), 4 * px_scale)
     gy, gx = np.gradient(elev)
     shade = np.clip(1 + 6.0 * (gx - gy), 0.6, 1.4)[..., None]
     landc = landc * shade
-    ub = ndimage.gaussian_filter(_box_mask(LON, LAT, [(126.60, 126.76, 37.40, 37.56), (126.62, 126.82, 37.57, 37.70),
-                                                        (126.58, 126.68, 37.35, 37.42), (126.42, 126.50, 37.44, 37.50),
-                                                        (126.80, 126.95, 37.45, 37.60)]).astype(np.float32), 70 * px_scale)
+    ub = ndimage.gaussian_filter(_box_mask(LON, LAT, C.URBAN_BOXES).astype(np.float32), 70 * px_scale)
     ub = np.clip(0.75 * ub * (0.7 + 0.8 * n1 + 0.4 * n2), 0, 0.85)[..., None]
     landc = landc * (1 - ub) + urban * ub
     # 해안 가까운 육지는 약간 밝게(모래/제방)

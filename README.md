@@ -104,6 +104,22 @@ render.py     1920×1080 30 fps 프레임(스트리크 유속장, 입자, 빨간
   정밀한 결과가 필요하면 섬 주변 50 m 격자의 둥지(nested) 모델과 실측 수심·해류가 필요합니다.
 * 다른 섬을 추가하려면 `island.py` 의 `ISLANDS` 에 이름·중심 좌표·여백만 넣으면 됩니다 (GSHHG 해안선에서 폴리곤을 자동으로 찾음).
 
+## 3-2. 미국 하와이 (지역 전환 예시)
+
+같은 파이프라인을 `REGION=hawaii` 로 실행하면 하와이 주요 섬 영상을 만든다 (`output/hawaii/`).
+인천과 달리 조차가 작아 조류 대신 **북적도해류·무역풍 표류·섬 뒤 소용돌이·하와이 리 반류**를 유선함수 모델(섬 우회)로 넣고,
+쓰레기의 70 %를 북태평양 외해 유입으로 둔다. 하와이용 자료 출처·근거는 [`docs/하와이_데이터_출처_및_계산_근거.md`](docs/하와이_데이터_출처_및_계산_근거.md).
+
+| 하와이 집적 예상 지도 | 하와이 영상 장면 |
+|---|---|
+| ![](output/hawaii/hotspot_map.png) | ![](output/hawaii/frame_01811.png) |
+
+```bash
+REGION=hawaii python -m incheon_debris_sim.simulate     # 500 m 격자, 60,000 입자, 60일
+REGION=hawaii python -m incheon_debris_sim.render       # output/hawaii/incheon_debris_simulation.mp4 → hawaii_debris_simulation.mp4
+```
+새 지역을 추가하려면 `incheon_debris_sim/regions/<이름>.py` 에 영역·조석·수심·발생원·지명·문구를 정의하면 된다.
+
 ## 4. 실행 방법
 
 ```bash
