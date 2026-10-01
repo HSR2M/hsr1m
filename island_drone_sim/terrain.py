@@ -147,7 +147,7 @@ def _fetch_tile(zoom: int, x: int, y: int, cache_dir: str) -> np.ndarray:
 
 
 def load_dem_bbox(lat0: float, lat1: float, lon0: float, lon1: float, zoom: int, cache_dir: str = "tiles",
-                  name: str = "bbox", edge_fade_px: int = 20) -> Terrain:
+                  name: str = "bbox", edge_fade_px: int = 35) -> Terrain:
     """위경도 범위를 덮는 타일을 받아 정확히 그 범위로 잘라낸 Terrain. 바다(<=0 m)는 0 m, land 마스크 포함.
     edge_fade_px: 범위 가장자리에서 이 폭만큼 고도를 0으로 서서히 낮춰(바다로 잠기게) 절단면 절벽을 없앤다."""
     os.makedirs(cache_dir, exist_ok=True)

@@ -107,6 +107,8 @@ def main():
     ap.add_argument("--proxy_arm", type=float, default=20.0, help="화면용 드론 모델 팔 길이(m)")
     ap.add_argument("--cam_back", type=float, default=180.0, help="3인칭 카메라: 드론 뒤 거리(m)")
     ap.add_argument("--cam_up", type=float, default=120.0, help="3인칭 카메라: 드론 위 높이(m)")
+    ap.add_argument("--look_inward", type=float, default=0.5,
+                    help="0=진행 방향만 봄, 1=섬 중심 쪽만 봄. 0.5면 비스듬히 안쪽을 보며 따라가 섬이 화면에 남는다")
     ap.add_argument("--intro_frames", type=int, default=90, help="섬 전경 샷 프레임 수")
     ap.add_argument("--outro_frames", type=int, default=60, help="마지막 수직 풀백 프레임 수")
     ap.add_argument("--shadow", action="store_true")
@@ -150,7 +152,7 @@ def main():
     steps_per_frame = max(1, int(round(args.sim_per_frame * env.CTRL_FREQ)))
     action = np.zeros((1, 4))
     heading = np.array([1.0, 0.0, 0.0])
-    eye_prev = None
+    eye_prev = None; tgt_prev = None
     n = 0
     wall = time.time()
 
@@ -159,9 +161,13 @@ def main():
 
     def follow_cam(st, hd):
         pos = st[0:3]
-        eye = pos - hd * args.cam_back + np.array([0, 0, args.cam_up])
+        inward = np.array([cx - pos[0], cy - pos[1], 0.0])
+        inward = inward / (np.linalg.norm(inward) + 1e-9)
+        look = hd * (1 - args.look_inward) + inward * args.look_inward
+        look = look / (np.linalg.norm(look) + 1e-9)
+        eye = pos - look * args.cam_back + np.array([0, 0, args.cam_up])
         eye[2] = max(eye[2], t.surface_z(eye[0], eye[1], client) + 15.0)
-        tgt = pos + hd * 60.0
+        tgt = pos + look * 60.0
         return eye, tgt
 
     def save(img):
@@ -201,8 +207,9 @@ def main():
             eye = intro_eye * (1 - w) + eye * w
             tgt = intro_tgt * (1 - w) + tgt * w
         if eye_prev is not None:                      # 카메라 떨림 완화
-            eye = eye_prev * 0.5 + eye * 0.5
-        eye_prev = eye
+            eye = eye_prev * 0.6 + eye * 0.4
+            tgt = tgt_prev * 0.6 + tgt * 0.4
+        eye_prev, tgt_prev = eye, tgt
         save(render(client, eye, tgt, W, H, args.fov, shadow=int(args.shadow)))
         if k % 30 == 0:
             pos = st[0:3]

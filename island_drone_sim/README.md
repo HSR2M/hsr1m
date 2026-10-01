@@ -103,11 +103,12 @@ python island_video.py --island seogeom --radius 1200 --agl 80
 | `--sim_per_frame` / `--fps` | 2.5 / 15 | 프레임당 시뮬 시간(s). 10 m/s 비행을 37배속 타임랩스로 보여준다 |
 | `--z_scale` | 1.5 | 지형 수직 과장(평탄한 섬의 입체감). 물리·경로에도 같이 적용 |
 | `--cam_back` / `--cam_up` | 180 / 120 | 3인칭 카메라의 드론 뒤 거리·위 높이(m) |
+| `--look_inward` | 0.5 | 0=진행 방향만, 1=섬 중심만 바라봄. 0.5면 비스듬히 안쪽을 보며 따라가 섬이 화면에 남는다 |
 | `--intro_frames` / `--outro_frames` | 90 / 60 | 전경 샷·풀백 샷 길이 |
 | `--width` `--height` `--shadow` | 960 540 off | 해상도, 그림자(2배 느림) |
 
 bbox 프리셋은 `terrain.ISLANDS`에 `bbox=(lat0, lat1, lon0, lon1)`, `zoom`, `center`, `radius`를 추가하면
-어느 섬이든 된다. 가장자리 20 px은 바다로 서서히 가라앉혀(edge fade) 절단면이 절벽처럼 보이지 않게 한다.
+어느 섬이든 된다. 가장자리 35 px은 바다로 서서히 가라앉혀(edge fade) 절단면이 절벽처럼 보이지 않게 한다.
 간석지가 넓은 서해안은 0~0.5 m 값이 해안을 따라 줄무늬로 나타나므로 0.5 m 이상만 육지로 본다.
 
 ![교동도 플라이오버](docs/gyodong_video.gif)
