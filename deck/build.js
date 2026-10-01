@@ -153,7 +153,7 @@ async function icon(name, colorHex, size = 256) {
   s.addShape(pres.ShapeType.rect, { x: 8.1, y: 0, w: 5.233, h: 7.5, fill: { color: H.dk2, transparency: 35 }, line: { color: H.dk2, transparency: 100 }, objectName: "image tint" });
   tb(s, "드론 기반 해안쓰레기 측정 · 수거계획 플랫폼 제안", { x: 0.7, y: 1.2, w: 7.2, h: 0.4, fontSize: 13, bold: true, color: C.accent2, charSpacing: 1 });
   s.addText("추정이 틀리면\n배차가 틀린다", { placeholder: "title" });
-  s.addText("드론 영상 하나로 쓰레기를 찾고, 3D로 부피를 재고, 무게를 구간으로 내고,\n수거계획을 바꾸는 물체만 다시 날아 마대·트럭·인원을 확정합니다.", { placeholder: "body" });
+  s.addText("위성 형상과 조석으로 어디를 날지 고르고, 드론 영상 하나로 3D 부피와 무게 구간을 내고,\n수거계획을 바꾸는 물체만 다시 날아 마대·트럭·인원을 확정합니다.", { placeholder: "body" });
   tb(s, "드론대장 붕붕이  ·  3DLabs 제안  ·  2026. 10", { x: 0.7, y: 6.5, w: 7.2, h: 0.4, fontSize: 11, color: C.accent5 });
   s.addNotes("표지. 한 문장: 수거계획의 입력(무게·위치)이 지금은 수십~수백 배 틀리고, 우리는 그 입력을 3D 부피와 예측구간으로 제공한다.");
 
@@ -162,10 +162,10 @@ async function icon(name, colorHex, size = 256) {
   s.addText("한 장 요약", { placeholder: "title" });
   sub(s, "문제 → 해법 → 검증 → 제안. 새로 발명한 알고리즘은 없고, 검증된 방법을 수거계획 하나로 이었습니다.");
   const sum = [
-    ["FaExclamationTriangle", "문제: 추정이 곧 예산이다", "해양쓰레기 수거량은 5년간 19.8% 늘었고 90%를 지자체가 치웁니다. 업체 라벨 42개의 기록 무게는 합계 1.3 kg, 현실적 범위는 115~1,355 kg. 탐지 위치는 50 m씩 빗나갑니다."],
-    ["FaRoute", "해법: 비행 한 번 = 수거계획서 한 부", "핫스팟 우선 경로 → 커버리지 비행 → 탐지 → 3D 위치 → SfM 부피 × 겉보기밀도 → 무게 예측구간 → 경계에 걸린 물체만 2차 선회 → 마대·트럭·인원·경로 작업카드."],
-    ["FaFlask", "검증: 상자 3개, 영상 3편, 해안 1개", "크기 아는 상자 3개에서 부피 오차 −10~+20% (업체 방식은 1/112·1/180). 3D↔GPS 잔차 1.16 m. 재방문으로 재현율 0.71→0.86. 하와이 니하우 섬 5,476개·7.9~33.6 t 수거계획."],
-    ["FaHandshake", "제안: 위성이 넓게, 드론이 자세히", "3DLabs의 위성 ARD로 광역 집적 패치·변화를 잡고, 드론이 재질·부피·위치를 확정해 지자체 수거계획으로 연결하는 B2G 공동 실증."],
+    ["FaExclamationTriangle", "문제: 추정이 곧 예산이다", "해양쓰레기 수거량은 5년간 19.8% 늘었고 90%를 지자체가 치웁니다. 업체 라벨 42개의 기록 무게는 합계 1.3 kg, 3D 부피로 다시 재면 101 kg(가정 밀도). 탐지 위치는 50 m씩 빗나갑니다."],
+    ["FaRoute", "해법: 비행 한 번 = 수거계획서 한 부", "위성 형상 점수·조석 모델로 어디를 날지 고르고(상위 30% 구간에 쓰레기 절반 이상) → 조종자 비행(KML) → 탐지 → 3D 위치 → SfM 부피 × 겉보기밀도 → 무게 구간 → 마대·트럭·인원·경로 작업카드."],
+    ["FaFlask", "검증: 상자 3개, 영상 3편, 해안 3곳", "상자 3개 부피 오차 −10~+20% (업체 방식은 1/112·1/180). 3D↔GPS 1.16 m. 재방문 재현율 0.71→0.86. 니하우: 핫스팟 30%가 전체 지그재그의 37% 시간으로 67% 포착. 문갑도 라벨 42개: 상위 30% 길이에 62%."],
+    ["FaHandshake", "제안: 위성이 넓게, 드론이 자세히", "위성의 역할은 탐지가 아니라 해안선 갱신·형상 점수·선별입니다. 3DLabs의 ARD 위에 드론 측정 계층을 얹어 지자체 수거계획으로 연결하는 B2G 공동 실증."],
   ];
   sum.forEach((c, i) => card(s, 0.6 + i * 3.075, 1.95, 2.9, 4.0, { icon: c[0], head: c[1], body: c[2], headSize: 15, bodySize: 12.5 }));
   s.addNotes("4블록으로 전체 흐름. 각 블록은 뒤에서 한 장 이상으로 풀린다.");
@@ -206,22 +206,22 @@ async function icon(name, colorHex, size = 256) {
   source(s, "출처: 유형별 수거량 해양수산부(2026.09) · 지자체 수거예산·국비 분담·처리 비중 에너지데일리(국회 자료, 2017~2022) · 처리 단가 한국일보(2018·2019, 전남 톤당 50만 원)");
   s.addNotes("작은 지자체일수록 '미리 재는 것'이 예산 그 자체. 수거 전 측정의 가치를 돈으로 환산하는 장.");
 
-  // 거제 사례
+  // 경남 2026년 8월 사례
   s = pres.addSlide({ masterName: "DARK_CONTENT", sectionTitle: "01 현황과 문제" });
-  s.addText("추정이 틀리면 생기는 일: 거제, 2023년 7월 집중호우", { placeholder: "title" });
-  tb(s, "유입량을 437 t으로 추정하고 굴삭기·차량을 투입했지만, 1주일 넘게 걸려 272 t만 수거했습니다. 처리비는 8천만 원 이상.", { x: 0.6, y: 1.32, w: 12.1, h: 0.45, fontSize: 14, color: C.accent5 });
-  stat(s, 0.6, 2.0, 2.9, 2.0, { value: "437", unit: "t", label: "추정 유입량", note: "육안·경험 기반", dark: true });
-  stat(s, 3.7, 2.0, 2.9, 2.0, { value: "272", unit: "t", label: "실제 수거량", note: "추정의 62%", dark: true, color: C.accent2 });
-  stat(s, 6.8, 2.0, 2.9, 2.0, { value: "1주+", unit: "", label: "소요 기간", note: "장비·인력 상시 대기", dark: true });
-  stat(s, 9.9, 2.0, 2.83, 2.0, { value: "8천만+", unit: "원", label: "처리 비용", note: "국비 지원 요청", dark: true });
+  s.addText("한 번의 폭우가 1,180 t을 보낸다: 경남, 2026년 8월", { placeholder: "title" });
+  tb(s, "광복절 연휴 폭우로 경남 연안에 1,180 t이 유입됐고 거제·통영이 80%를 차지했습니다. 유입량 추정은 육안과 경험에 기대고, 그 추정이 장비·인력·마대를 정합니다.", { x: 0.6, y: 1.32, w: 12.1, h: 0.45, fontSize: 14, color: C.accent5 });
+  stat(s, 0.6, 2.0, 2.9, 2.0, { value: "1,180", unit: "t", label: "유입량 추정 (경남 연안)", note: "육안·경험 기반 집계", dark: true });
+  stat(s, 3.7, 2.0, 2.9, 2.0, { value: "757", unit: "t", label: "거제 (통영 190 t)", note: "두 시군이 전체의 80%", dark: true, color: C.accent2 });
+  stat(s, 6.8, 2.0, 2.9, 2.0, { value: "3주", unit: "", label: "96% 수거까지 걸린 시간", note: "장비·인력 상시 투입", dark: true });
+  stat(s, 9.9, 2.0, 2.83, 2.0, { value: "$29~37M", unit: "", label: "2011년 거제 관광수입 손실", note: "낙동강 유입 쓰레기, Jang et al. 2014", dark: true, valueSize: 28 });
   s.addShape(pres.ShapeType.roundRect, { x: 0.6, y: 4.25, w: 12.13, h: 2.1, fill: { color: "124A6E" }, line: { color: "124A6E" }, rectRadius: 0.12, objectName: "insight card" });
   s.addShape(pres.ShapeType.ellipse, { x: 0.95, y: 4.6, w: 0.7, h: 0.7, fill: { color: H.accent2 }, line: { color: H.accent2 }, objectName: "icon circle" });
   s.addImage({ data: ICON.FaTruck_w, x: 1.12, y: 4.77, w: 0.36, h: 0.36, objectName: "icon truck" });
-  tb(s, "남는 트럭과 모자라는 트럭이 동시에 생긴다. 거제는 반복된다.", { x: 1.95, y: 4.55, w: 10.5, h: 0.45, fontSize: 16, bold: true, color: C.background1 });
-  tb(s, "무게가 틀리면 마대·트럭 수가 틀리고, 위치가 틀리면 동선·인원이 틀립니다. 2011년 7월 낙동강 유입 쓰레기로 거제의 관광수입 손실은 2,900만~3,700만 달러로 추정됐고(Jang et al. 2014), 2026년 8월 폭우로도 경남 연안에 1,180 t이 유입돼 통영·거제가 80%를 차지했습니다. 작은 지자체일수록 수거 전에 재는 것이 예산 그 자체입니다.",
+  tb(s, "남는 트럭과 모자라는 트럭이 동시에 생긴다", { x: 1.95, y: 4.55, w: 10.5, h: 0.45, fontSize: 16, bold: true, color: C.background1 });
+  tb(s, "무게가 틀리면 마대·트럭 수가 틀리고, 위치가 틀리면 동선·인원이 틀립니다. 유입 직후 며칠 안에 '어디에 얼마나'를 재서 배차하면 장비 대기 일수와 처리비가 줄어듭니다. 거제는 2011년에도 같은 일을 겪었고, 작은 지자체일수록 수거 전에 재는 것이 예산 그 자체입니다.",
     { x: 1.95, y: 5.05, w: 10.5, h: 1.2, fontSize: 12.5, color: C.accent5, valign: "top" });
-  source(s, "출처: 뉴시스 2023.07.25 「거제 해양쓰레기 437t 추정·272t 수거」 · Jang, Hong, Lee, Lee & Shim (2014) Marine Pollution Bulletin 81:49–54 · 서울신문 2026.09.09 「광복절 연휴 폭우 해양쓰레기, 경남 연안 96% 수거」", true);
-  s.addNotes("실제 사례 한 장. 숫자 네 개만 크게. 2011·2026년 반복 사례로 '일회성 아님'을 보인다.");
+  source(s, "출처: 서울신문 2026.09.09 「광복절 연휴 폭우 해양쓰레기, 경남 연안 96% 수거」(1,180 t 유입, 거제 757 t·통영 190 t) · Jang, Hong, Lee, Lee & Shim (2014) Marine Pollution Bulletin 81:49–54", true);
+  s.addNotes("실제 사례 한 장. 2023년 거제 437→272 t 수치는 원문 확인이 안 돼 뺐다. 2026년 8월 경남 수치와 2011년 거제 관광손실(논문)만 쓴다.");
 
   // 현행 방식의 한계
   s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "01 현황과 문제" });
@@ -242,16 +242,16 @@ async function icon(name, colorHex, size = 256) {
 
   // 업체 데이터로 본 문제
   s = pres.addSlide({ masterName: "CONTENT_LT2", sectionTitle: "01 현황과 문제" });
-  s.addText("업체 라벨 42개: 기록 1.3 kg, 현실은 115~1,355 kg", { placeholder: "title" });
-  sub(s, "문갑도 업체 라벨의 weight_kg는 실측이 아니라 '라벨 면적 × 재질 계수'입니다. 같은 면적에 현실적인 두께와 밀도를 주면 수십~수백 배 커집니다.");
+  s.addText("업체 라벨 42개: 기록 1.3 kg, 3D 부피로 다시 재면 101 kg", { placeholder: "title" });
+  sub(s, "문갑도 업체 라벨의 weight_kg는 실측이 아니라 '라벨 면적 × 재질 계수'입니다. 같은 물체를 3D 부피 × 겉보기밀도로 계산하면 101 kg(가정 밀도, 범위 15~1,328 kg), 현실적 두께 범위로는 115~1,355 kg입니다.");
   s.addImage({ path: img("fig_12_업체라벨_기록무게_vs_현실범위.jpg"), x: 0.6, y: 1.95, w: 7.9, h: 3.05, objectName: "업체 라벨 기록 무게 vs 현실 범위" });
   tb(s, "왼쪽: 업체 라벨 42개의 기록 무게 분포(합계 1.32 kg, 최대 0.25 kg). 오른쪽: 같은 면적의 현실적 범위(두께 2~35 cm × 재질 밀도, 로그 눈금).", { x: 0.6, y: 5.03, w: 7.9, h: 0.5, fontSize: 9.5, color: C.accent4, valign: "top" });
-  card(s, 0.6, 5.55, 7.9, 0.95, { head: "원인은 하나: 높이(두께)가 없다", body: "3 cm/px 정사영상에는 DSM이 없어 부피를 잴 수 없습니다. 그래서 우리는 영상에서 3D를 만들어 높이를 직접 잽니다.", headSize: 12.5, bodySize: 11 });
-  stat(s, 8.8, 1.95, 3.93, 1.5, { value: "0.018", unit: "kg", label: "1.54 m² 스티로폼 더미의 기록 무게", note: "현실적으로는 0.3~17 kg", color: C.accent2, valueSize: 30 });
-  stat(s, 8.8, 3.6, 3.93, 1.5, { value: "50", unit: "m", label: "탐지 위치 오차 (업체 제보)", note: "드론 GPS를 쓰레기 위치로 기록 + 비스듬한 촬영", valueSize: 30 });
-  card(s, 8.8, 5.25, 3.93, 1.25, { head: "업체 계수표 (kg/m²)", body: "스티로폼 0.012 · 로프·어망 0.024 · 플라스틱 0.020. 품목 수 × 평균무게 방식은 문헌에서도 약 40% 과대추정(Andriolo et al. 2024).", headSize: 12, bodySize: 10.5 });
-  source(s, "출처: 업체 라벨 자료(문갑도 MGD, 42개)와 팀 분석(2026.09~10) · Andriolo et al. (2024) Marine Pollution Bulletin 202:116405");
-  s.addNotes("업체 데이터로 문제를 숫자로 고정. 결론: 높이가 없으면 무게가 없다. 더 정확한 점 추정이 아니라 '3D 부피 + 얼마나 믿을 수 있는지'가 필요.");
+  card(s, 0.6, 5.55, 7.9, 0.95, { head: "원인은 하나: 높이(두께)가 없다", body: "업체 계수는 스티로폼 0.012 · 로프·어망 0.024 · 플라스틱 0.020 kg/m². 3 cm/px 정사영상에는 DSM이 없어 부피를 잴 수 없으므로, 영상에서 3D를 만들어 높이를 직접 잽니다.", headSize: 12.5, bodySize: 10.5 });
+  stat(s, 8.8, 1.95, 3.93, 1.4, { value: "0.018", unit: "kg", label: "1.54 m² 스티로폼 더미의 기록 무게", note: "현실적으로는 0.3~17 kg", color: C.accent2, valueSize: 28 });
+  stat(s, 8.8, 3.5, 3.93, 1.4, { value: "101", unit: "kg", label: "같은 42개, 3D 부피 × 겉보기밀도", note: "범위 15~1,328 kg · 가정 밀도 · 실측 전", valueSize: 28 });
+  stat(s, 8.8, 5.05, 3.93, 1.45, { value: "50", unit: "m", label: "탐지 위치 오차 (업체 제보)", note: "드론 GPS를 쓰레기 위치로 기록 + 비스듬한 촬영", valueSize: 28 });
+  source(s, "출처: 업체 라벨 자료(문갑도 MGD, 42개) · 서비스 수거계획 산출(demo-mungap, 가정 밀도) · 팀 분석(2026.09~10) · 계수 방식의 약 40% 과대추정: Andriolo et al. (2024) MPB 202:116405");
+  s.addNotes("업체 데이터로 문제를 숫자로 고정. 101 kg도 가정 밀도 계산값이라 저울 실측이 로드맵 1단계. 결론: 높이가 없으면 무게가 없다.");
 
   // ═════════ 02 솔루션 ═════════
   pres.addSection({ title: "02 솔루션" });
@@ -265,8 +265,8 @@ async function icon(name, colorHex, size = 256) {
   s.addText("비행 한 번이 수거계획서 한 부가 된다", { placeholder: "title" });
   sub(s, "입력은 드론 영상(MP4)과 비행기록(SRT)뿐입니다. 비행은 사람이 하고, 나머지 7단계는 노트북 한 대가 자동으로 수행합니다.");
   const steps = [
-    ["FaMapMarkedAlt", "핫스팟 경로", "과거 조사·집적 예측으로 배터리 안에서 많이 보는 경로"],
-    ["FaPlane", "커버리지 비행", "고도 20 m 지그재그, 애매한 곳은 8 m 재방문"],
+    ["FaSatellite", "어디를 날지", "위성 형상 점수(만입도·풍향 노출·띠 폭) + 조석·해류 방향"],
+    ["FaPlane", "조종자 비행", "경로 KML 내보내기, 고도 20 m, 애매한 곳 8 m 재방문"],
     ["FaSearchLocation", "탐지", "YOLO11-s, AI Hub 해안쓰레기 2~4 cm/px 학습"],
     ["FaCrosshairs", "위치", "3D 카메라 자세로 광선 교차 → GPS 정렬"],
     ["FaCubes", "부피", "SfM+MVS 점구름, SAM 2 마스크 투표, 높이지도"],
@@ -284,10 +284,10 @@ async function icon(name, colorHex, size = 256) {
   });
   s.addShape(pres.ShapeType.roundRect, { x: 0.6, y: 4.75, w: 3.4, h: 0.55, fill: { color: H.accent6 }, line: { color: H.accent6 }, rectRadius: 0.1, objectName: "satellite input" });
   s.addImage({ data: ICON.FaSatellite_n, x: 0.78, y: 4.88, w: 0.3, h: 0.3, objectName: "icon satellite" });
-  tb(s, "3DLabs 위성 ARD가 들어가는 자리: 집적 패치·변화 → 1단계 우선순위", { x: 1.18, y: 4.75, w: 2.8, h: 0.55, fontSize: 9.5, bold: true, color: C.text2, valign: "middle" });
-  card(s, 0.6, 5.5, 6.0, 1.05, { head: "입력", body: "비행 영상(MP4) + 비행기록(SRT: 시각·GPS·고도). DJI 기본 기체. 1차 커버리지 1회 + 경계 물체만 2차 선회.", headSize: 12, bodySize: 11 });
-  card(s, 6.73, 5.5, 6.0, 1.05, { head: "출력", body: "지도 핀(위치·오차반경) · 물체 목록(부피·무게 구간 CSV/GeoJSON) · 정거장별 작업카드(인력·마대·트럭·경로) · 2차 비행 경로(KMZ)", headSize: 12, bodySize: 11 });
-  s.addNotes("7단계 파이프라인. 우리 기여는 5→7: 영상 하나로 3D 부피까지 가고, 수거계획을 바꾸는 불확실성만 줄인다.");
+  tb(s, "3DLabs 위성 ARD가 들어가는 자리: 해안선 갱신 · 형상 점수 · 선별", { x: 1.18, y: 4.75, w: 2.8, h: 0.55, fontSize: 9.5, bold: true, color: C.text2, valign: "middle" });
+  card(s, 0.6, 5.5, 6.0, 1.05, { head: "입력", body: "비행 영상(MP4) + 비행기록(SRT: 시각·GPS·고도). DJI 기본 기체, 조종자가 KML 경로를 보고 비행(자동비행 아님). 1차 커버리지 + 경계 물체만 2차 선회.", headSize: 12, bodySize: 10.5 });
+  card(s, 6.73, 5.5, 6.0, 1.05, { head: "출력", body: "지도 핀(위치·오차반경) · 물체 목록(부피·무게 구간 CSV/GeoJSON) · 정거장별 작업카드(인력·마대·트럭·경로) · 경로 KML(Google Earth·Litchi; DJI Fly용 KMZ는 확인 전)", headSize: 12, bodySize: 10.5 });
+  s.addNotes("7단계 파이프라인. 어디를 날지는 위성이, 무엇이 얼마나 무거운지는 드론 3D가 정한다. 자동비행은 제품 전제에서 뺐다.");
 
   // 촬영 거리
   s = pres.addSlide({ masterName: "CONTENT_LT2", sectionTitle: "02 솔루션" });
@@ -307,7 +307,7 @@ async function icon(name, colorHex, size = 256) {
   s.addShape(pres.ShapeType.roundRect, { x: 0.6, y: 5.3, w: 12.13, h: 1.2, fill: { color: H.dk2 }, line: { color: H.dk2 }, rectRadius: 0.12, objectName: "guide card" });
   s.addImage({ data: ICON.FaCamera_o, x: 0.95, y: 5.6, w: 0.5, h: 0.5, objectName: "icon camera" });
   tb(s, "선회 촬영 가이드 (실험으로 고정)", { x: 1.7, y: 5.42, w: 10.5, h: 0.35, fontSize: 13, bold: true, color: C.background1 });
-  tb(s, "고도 3~4 m · 반경 3 m · 짐벌 45° 한 바퀴 + 수직 1장 · SRT 켜기 · 기준 물체 1개. 7 m 선회(0007)에서 무늬 없는 상자 윗면이 1.5~3.5 cm 높게 복원된 편향이 2 m(0010)에서는 −10%로 줄었습니다. 1차 커버리지는 20 m 통과 비행으로 충분합니다(야간 10분 비행에서 상자 30개 탐지·지도화).", { x: 1.7, y: 5.78, w: 10.8, h: 0.7, fontSize: 10.5, color: C.accent5, valign: "top" });
+  tb(s, "고도 3~4 m · 반경 3 m · 짐벌 45° 한 바퀴 + 수직 1장 · SRT 켜기 · 기준 물체 1개. 7 m 선회(0007)의 윗면 편향(1.5~3.5 cm 높게 복원)이 2 m(0010)에서는 −10%로 줄어, 3·5·7 m 선회 통제 실험을 예정했습니다. 1차 커버리지는 20 m 통과 비행으로 충분합니다(야간 10분 비행에서 상자 30개 탐지·지도화).", { x: 1.7, y: 5.78, w: 10.8, h: 0.7, fontSize: 10.5, color: C.accent5, valign: "top" });
   refs(s, "근거: Andriolo, Topouzelis, van Emmerik et al. (2023) Marine Pollution Bulletin 195:115521 · Andriolo & Gonçalves (2022) Environmental Pollution 315:120370 · Kako, Morita & Taneda (2020) MPB 155:111127 · 팀 실험 0007·0010·0015", 0.6, 6.62, 12.1, 0.36);
   s.addNotes("'왜 그 거리에서 찍나'에 대한 답. 탐지 권고 GSD와 3D 복원 조건을 동시에 만족하는 고도 두 단계. 숫자는 4K 24 mm 기준 계산값이며 실제 기체 스펙으로 확정 예정.");
 
@@ -320,48 +320,63 @@ async function icon(name, colorHex, size = 256) {
   stat2(s, 9.93, 1.95, 2.8, 1.45, { value: "0.88", unit: "", label: "앞/뒤 기간 순위상관", note: "NOAA MDMAP 134곳 반복조사, 상위 20% 유지 74%" });
   stat2(s, 6.95, 3.52, 2.8, 1.45, { value: "61", unit: "% vs 36%", label: "예산 20%에서 다음 조사 쓰레기 커버", note: "텍사스 33곳, 앞 기간으로 계획 → 뒤 기간 채점", color: C.accent2 });
   stat2(s, 9.93, 3.52, 2.8, 1.45, { value: "69", unit: "%", label: "배터리 1개로 보는 비율", note: "몰로카이, 이륙 지점까지 알고리즘이 선택" });
-  card(s, 6.95, 5.1, 5.78, 1.32, { head: "알고리즘: 오리엔티어링 문제", body: "구간 가치 = 기대 쓰레기량 × 중요도(어망·부표 5 … 조각 1) + 탐색 보너스. 삽입 휴리스틱 → 2-opt → 이륙 지점 선택 → 배터리별 반복. 미래를 안다고 가정한 상한과의 차이 최대 3.2%p.", headSize: 12.5, bodySize: 10.5 });
+  card(s, 6.95, 5.1, 5.78, 1.32, { head: "알고리즘: 오리엔티어링 문제", body: "구간 가치 = 기대 쓰레기량 × 중요도(어망·부표 5 … 조각 1) + 탐색 보너스. 삽입 휴리스틱 → 2-opt → 이륙 지점 선택 → 소티당 비행거리 예산(기본 5 km, 가정값)별 반복. 미래를 안다고 가정한 상한과의 차이 최대 3.2%p.", headSize: 12.5, bodySize: 10.5 });
   refs(s, "자료: 하와이 항공 정사영상 칩 1,587장(Zenodo 8381113) · NOAA MDMAP 반복조사 · 팀 분석(hotspot/). 한국 검증은 국가 해안쓰레기 모니터링 정점 시계열로 같은 절차 적용 예정(1단계 로드맵).", 0.6, 6.62, 12.1, 0.36);
   s.addNotes("핫스팟 우선의 세 근거(몰린다·다시 쌓인다·과거로 짠 경로가 통한다)와 드론 규모 시연. 모두 미국 공개 데이터이며 한국 검증은 로드맵 1단계.");
 
-  // 한국 적용: 집적 예측 + 만입 해안
+  // 니하우 전략 비교
   s = pres.addSlide({ masterName: "CONTENT_LT2", sectionTitle: "02 솔루션" });
-  s.addText("한국 해안에 옮기기: 조류 집적 예측과 만입 해안", { placeholder: "title" });
-  sub(s, "첫 조사 이력이 없는 해안은 조류·바람·하천 입자추적과 해안 형태(만입·풍향 노출)를 약한 사전값으로 쓰고, 조사 결과가 쌓이면 이력이 사전값을 대체합니다.");
-  s.addImage({ path: img("hotspot_map_gyodong.jpg"), x: 0.6, y: 1.95, w: 5.4, h: 4.25, objectName: "교동도 집적 예상 지도" });
-  tb(s, "교동도 집적 예상 구간(빨간 라인). 조석 연속방정식 조류 + 풍압 + 좌초·재부유, 100 m 격자 · 200,000 입자 · 30일.", { x: 0.6, y: 6.22, w: 5.4, h: 0.4, fontSize: 9, color: C.accent4 });
-  s.addShape(pres.ShapeType.roundRect, { x: 6.3, y: 1.95, w: 6.43, h: 2.3, fill: { color: H.lt1 }, line: { color: H.lt1 }, rectRadius: 0.12, shadow: shadow(), objectName: "chart card" });
-  tb(s, "교동도 8방위 구간 좌초 밀도 점수 (섬 해안선 기준 상위 30%)", { x: 6.55, y: 2.05, w: 6.0, h: 0.3, fontSize: 11.5, bold: true });
-  s.addChart(pres.ChartType.bar, [{ name: "점수", labels: ["서안", "북서안", "북안", "북동안"], values: [28.6, 24.5, 8.7, 5.4] }],
-    chartBase({ x: 6.4, y: 2.35, w: 6.2, h: 1.85, barDir: "bar", valAxisMinVal: 0, valAxisMaxVal: 35, dataLabelFormatCode: "0", catAxisLabelFontSize: 10, catAxisOrientation: "maxMin", valAxisHidden: true, valGridLine: { style: "none" } }));
-  card(s, 6.3, 4.4, 6.43, 2.1, { icon: "FaWater", head: "만입 해안이 더 모은다는 근거와 한계", body: "반폐쇄 하구만이 집적 핫스팟(Maiti et al. 2026), 헤드랜드로 막힌 포켓비치가 개방 해안보다 높은 집적(북사르데냐), 해안선 형태·바람이 집적을 지배(Critchell & Lambrechts 2016; Brabo et al. 2022). 단, 하와이에서는 무역풍 정면 1.6배도 섬마다 달라 조사 이력이 꼭 필요했습니다.", headSize: 12.5, bodySize: 10 });
-  refs(s, "근거: Maiti et al. (2026) MPB 232:120031 · Critchell & Lambrechts (2016) Estuar. Coast. Shelf Sci. 171:111–122 · Brabo et al. (2022) MPB 174 · Dagestad et al. (2018) GMD 11:1405 · Onink et al. (2021) ERL 16:064053. 모식 조류·실측 검증 전.", 0.6, 6.62, 12.1, 0.36);
-  s.addNotes("한국 적용의 사전값: 조류 모델 + 해안 형태. 만입 해안 가설은 문헌 근거가 있으나 단일 변수로 쓰지 않고 이력으로 보정한다.");
+  s.addText("같은 자원으로 2배: 핫스팟 30% vs 전체 지그재그 (니하우)", { placeholder: "title" });
+  sub(s, "같은 카메라(20 m, GSD 2.9 cm)·같은 띠 폭(−20~+100 m, 8패스)·같은 배터리. 위성 형상 점수 상위 30% 구간만 날면 비행시간 41.3 h → 15.4 h로 탐지 무게의 67%를 잡습니다.");
+  s.addImage({ path: img("fig_22_시간대비포착_핫스팟_vs_지그재그.jpg"), x: 0.6, y: 1.95, w: 6.1, h: 3.97, objectName: "니하우 시간 대비 포착" });
+  tb(s, "니하우 해안 98.8 km. 검증 밀도는 하와이 탐지 격자 5,476개·13.7 t(라벨이 아닌 탐지, 재현율 0.58)이라 '순위와 비율'까지만 해석합니다.", { x: 0.6, y: 5.95, w: 6.1, h: 0.55, fontSize: 9, color: C.accent4, valign: "top" });
+  stat2(s, 6.95, 1.95, 2.8, 1.45, { value: "15.4", unit: "h vs 41.3 h", label: "비행시간 (−63%)", note: "소티 119 → 51, 프레임·탐지 CPU −65%" });
+  stat2(s, 9.93, 1.95, 2.8, 1.45, { value: "67", unit: "%", label: "같은 시간에 포착한 무게", note: "위성 없이 같은 시간: 지리 순서 25%, 무작위 29%", color: C.accent2 });
+  stat2(s, 6.95, 3.52, 2.8, 1.45, { value: "33", unit: "%", label: "설계상 못 보는 몫", note: "간격 메움 +1.3 h로 75%. 90% 이상 목표면 절감 23%" });
+  stat2(s, 9.93, 3.52, 2.8, 1.45, { value: "38", unit: "%", label: "풍향을 반대로 넣으면", note: "점수 오류 민감도. 만입도(계절 무관)를 주 가중치로" });
+  card(s, 6.95, 5.1, 5.78, 1.4, { head: "운용 규칙: 집중하되, 전체는 가끔 확인한다", body: "핫스팟 정기 비행 + N회에 1번 전수 + 예산 20% 무작위 표본. 핫스팟 전략은 '같은 자원으로 가장 많이'에 강하고 전수 조사의 대체재가 아닙니다. 선택 안 된 70% 해안은 관측이 없습니다.", headSize: 12.5, bodySize: 10.5 });
+  refs(s, "자료: Sentinel-2 10 m 해안선(NDWI), 형상 점수 = z(만입도) + 0.5 z(풍향 노출) + 0.5 z(log 띠 폭) · 비교 모델은 sim_ortho 카메라와 동일 · route_optimization/docs/전략비교_핫스팟_vs_전체커버리지.md", 0.6, 6.62, 12.1, 0.36);
+  s.addNotes("'같은 자원으로 2배'. 피할 표현: '그쪽만 날린다'(선택 안 된 70%는 관측 없음), '확률이 높다'(무작위 대비 2배 농축일 뿐).");
+
+  // 한국: 문갑도·인천
+  s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "02 솔루션" });
+  s.addText("한국 해안: 문갑도 라벨 42개와 인천 하구에서 확인한 것", { placeholder: "title" });
+  sub(s, "외해 섬은 위성 만입도가 맞고(문갑도 상위 30% 길이에 라벨 62%), 하구·항만은 조석 모델이 맞습니다(인천 13% 길이로 집적 예상 해안 99%). 광역 층이 어느 면을, 국지 층이 그 면의 어느 200 m를 정합니다.");
+  s.addImage({ path: img("fig_26_문갑도_우선구간_비행경로.jpg"), x: 0.6, y: 1.95, w: 3.95, h: 4.37, objectName: "문갑도 우선 구간 비행경로" });
+  tb(s, "문갑도: 위성 형상 점수 상위 30%(주황)와 소티별 경로. 라벨 42개(2026-07-29) 대비.", { x: 0.6, y: 6.33, w: 3.95, h: 0.3, fontSize: 9, color: C.accent4 });
+  s.addImage({ path: img("fig_25_문갑도_예산대비포착률.jpg"), x: 4.8, y: 1.95, w: 4.2, h: 2.77, objectName: "문갑도 예산 대비 포착률" });
+  card(s, 4.8, 4.85, 4.2, 1.65, { head: "문갑도 (서해, 해안 12.3 km, 상위 30% 길이)", body: "만입도만 62% · 만입도+잔차류+풍향 67% · 노출만 52% · OpenDrift 8 km 해류 21%(KHOA 보정 후 40%) · 무작위 30%. 비행: 전체 5.0 h·15소티 → 상위 30% 2.2 h·7소티.", headSize: 11.5, bodySize: 9.5 });
+  s.addImage({ path: img("fig_32_시간대비포착_인천.jpg"), x: 9.25, y: 1.95, w: 3.48, h: 2.27, objectName: "인천 시간 대비 포착" });
+  card(s, 9.25, 4.35, 3.48, 2.15, { head: "인천·강화 하구 (조석 모델)", body: "집적 예상 해안 140 km(전체의 13%)만 날면 448 h·1,333소티 → 57 h·178소티, 포착 99%. 위성 형상 점수는 하구 수로형 핫스팟과 안 겹쳐 무작위 이하(3%) → 조석 모델이 1차 선별, 위성은 해안선 정합·갱신.", headSize: 11.5, bodySize: 9.5 });
+  refs(s, "근거 범위: 공간 군집은 자료로(니하우 만 244 vs 곶 40 kg/km, 문갑도 만 6.4 vs 곶 0.5 개/km), 시간 반복은 문헌·물리 추론(국내 반복 조사 예정). 만입 해안 문헌: Maiti et al. 2026 MPB 232:120031 · Critchell & Lambrechts 2016 ECSS 171 · Brabo et al. 2022 MPB 174. 조석 모델 incheon_debris_sim · OpenDrift(Open-Meteo SMOC 1/12°)", 0.6, 6.62, 12.1, 0.36);
+  s.addNotes("두 층 규칙: 광역(조석·해류 통계)이 어느 섬·어느 면, 국지(위성 형상)가 그 면 안의 어느 200 m. 피할 표현: '주기적으로 생긴다'(반복을 직접 본 적 없음).");
 
   // 운용·시뮬레이터
-  s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "02 솔루션" });
-  s.addText("어떻게 날릴까: 비행은 사람, 나머지는 AI + 시뮬레이터", { placeholder: "title" });
-  sub(s, "실기체(DJI Mini 5 Pro)는 SDK가 없어 자동비행이 안 됩니다. 그래서 업체 문갑도 정사영상을 가상 세계로 써서 커버리지·실시간 탐지·능동 재방문을 검증했습니다.");
-  s.addImage({ path: img("wolmido_map.jpg"), x: 0.6, y: 1.95, w: 3.6, h: 4.4, objectName: "월미도 비행 시뮬레이션 지도" });
-  tb(s, "실제 DEM 위 비행 시뮬(PyBullet), 경로 오차 ≤ 2.8 m", { x: 0.6, y: 6.38, w: 3.6, h: 0.3, fontSize: 9, color: C.accent4 });
-  s.addShape(pres.ShapeType.roundRect, { x: 4.5, y: 1.95, w: 4.0, h: 2.6, fill: { color: H.lt1 }, line: { color: H.lt1 }, rectRadius: 0.12, shadow: shadow(), objectName: "chart card" });
-  tb(s, "능동 재방문 효과: 재현율 (문갑도 100×100 m, 라벨 7개)", { x: 4.75, y: 2.05, w: 3.6, h: 0.3, fontSize: 11.5, bold: true });
+  s = pres.addSlide({ masterName: "CONTENT_LT2", sectionTitle: "02 솔루션" });
+  s.addText("어떻게 날릴까: 비행은 조종자, 나머지는 소프트웨어", { placeholder: "title" });
+  sub(s, "자동비행은 제품 전제에서 뺐습니다. 경로를 KML로 내보내 조종자가 날고, 비행 구역은 위성 타일로 자동 마스킹하며, 탐지·재방문은 업체 정사영상 가상비행으로 검증했습니다.");
+  card(s, 0.6, 1.95, 3.75, 4.55, { head: "비행 구역 자동 마스킹 (구현)", body: "Esri 위성 타일(약 1 m/px) RGB 지형분류(물·맨땅·식생, 8 m 격자)와 탁한 하구·갯벌 질감 보정으로 바다·갯벌·숲을 빼고, 물에 닿은 땅의 외곽선만 해안선(100 m 구간)으로 뽑습니다. 마스크·정사영상·조석 지도는 EPSG:3857로 재투영해 위성 지도에 정확히 겹칩니다(이전 모서리 60 m 어긋남 해결). 해안선이 없는 구역은 전체 커버리지 경로로 전환.\n\n왜 마스킹하나: 해안 띠 밖 사진은 쓸모없고, 배터리를 낭비하며, 바다 추락은 기체 손실.", headSize: 13, bodySize: 10.5 });
+  s.addShape(pres.ShapeType.roundRect, { x: 4.55, y: 1.95, w: 4.0, h: 2.6, fill: { color: H.lt1 }, line: { color: H.lt1 }, rectRadius: 0.12, shadow: shadow(), objectName: "chart card" });
+  tb(s, "능동 재방문 효과: 재현율 (문갑도 100×100 m, 라벨 7개)", { x: 4.8, y: 2.05, w: 3.6, h: 0.3, fontSize: 11.5, bold: true });
   s.addChart(pres.ChartType.bar, [{ name: "재현율", labels: ["커버리지만", "커버리지 + 재방문"], values: [0.71, 0.86] }],
-    chartBase({ x: 4.6, y: 2.4, w: 3.8, h: 2.05, barDir: "col", valAxisMinVal: 0, valAxisMaxVal: 1, dataLabelFormatCode: "0.00", catAxisLabelFontSize: 10, valAxisLabelFormatCode: "0.0" }));
-  stat(s, 8.73, 1.95, 4.0, 2.6, { value: "+697", unit: "m", label: "재방문으로 늘어난 비행거리", note: "20 m 커버리지 679 m → 8 m 재방문 25회 포함 1,718 m. 애매한 후보 25개 중 22개 기각·3개 확정.", color: C.accent2 });
-  card(s, 4.5, 4.75, 8.23, 1.6, { head: "운용 구조", body: "핫스팟 경로를 KMZ 웨이포인트로 내보내 DJI Fly로 비행(실기체 확인 필요) → 영상+SRT 입력 → 노트북 한 대(RTX 4060 8 GB·RAM 16 GB)에서 탐지·3D·작업카드. 조밀 복원은 45분에서 3분 24초로 단축. 시뮬레이터는 월드·카메라·비행·탐지·지도·계획을 분리해 ROS 2/PX4로 이식 설계.", headSize: 12.5, bodySize: 11 });
-  refs(s, "근거: Galceran & Carreras (2013) 커버리지 경로계획, Robot. Auton. Syst. 61(12):1258–1276 · Popović et al. (2020) 정보 경로계획(IPP), Auton. Robots 44:889–911 · 팀 sim_ortho 결과(figures/sim_aihub_*_summary.json)", 0.6, 6.62, 12.1, 0.36);
-  s.addNotes("IPP는 지도 전체의 불확실성을 줄이지만 우리는 수거계획이 바뀌는 불확실성만 줄인다. 재방문 25회 중 22회가 '한 프레임 우연 탐지' 기각.");
+    chartBase({ x: 4.65, y: 2.4, w: 3.8, h: 2.05, barDir: "col", valAxisMinVal: 0, valAxisMaxVal: 1, dataLabelFormatCode: "0.00", catAxisLabelFontSize: 10, valAxisLabelFormatCode: "0.0" }));
+  stat(s, 8.78, 1.95, 3.95, 2.6, { value: "+697", unit: "m", label: "재방문으로 늘어난 비행거리", note: "20 m 커버리지 679 m → 8 m 재방문 25회 포함 1,718 m. 애매한 후보(신뢰도 0.25~0.5) 25개 중 22개 기각·3개 확정.", color: C.accent2 });
+  card(s, 4.55, 4.75, 8.18, 1.75, { head: "운용 구조", body: "핫스팟 경로 → KML 내보내기(Google Earth·Litchi에서 열림; DJI Fly용 WPML KMZ 변환과 실기체 임포트는 확인 전) → 조종자 비행 → 영상+SRT → 노트북 한 대(RTX 4060 8 GB·RAM 16 GB)에서 탐지·3D·작업카드, 조밀 복원 45분 → 3분 24초. 배터리는 소티당 비행거리 예산(기본 5 km, 가정값) 한 변수로만 봅니다. 시뮬레이터는 월드·카메라·비행·탐지·지도·계획을 분리해 ROS 2/PX4로 이식 설계.", headSize: 12.5, bodySize: 10.5 });
+  refs(s, "근거: Galceran & Carreras (2013) 커버리지 경로계획, Robot. Auton. Syst. 61(12):1258–1276 · Popović et al. (2020) 정보 경로계획(IPP), Auton. Robots 44:889–911 · 팀 sim_ortho 결과 · 서비스 app/region.py(마스킹)", 0.6, 6.62, 12.1, 0.36);
+  s.addNotes("자동비행 아님을 분명히. 재방문은 신뢰도 기반(시뮬)이며 무게 경계 기반 2차 선회(설계)와는 다른 규칙.");
 
   // 탐지·위치
-  s = pres.addSlide({ masterName: "CONTENT_LT2", sectionTitle: "02 솔루션" });
-  s.addText("무엇이 어디에: 운용 고도에 맞춘 탐지와 3D 위치", { placeholder: "title" });
-  sub(s, "AI Hub 해안쓰레기 사진 1.2만 장을 운용 고도의 해상도(2~4 cm/px)로 축소해 학습했고, 위치는 3D 카메라 자세로 광선을 쏴서 GPS에 정렬합니다.");
-  s.addShape(pres.ShapeType.roundRect, { x: 0.6, y: 1.95, w: 5.6, h: 2.35, fill: { color: H.lt1 }, line: { color: H.lt1 }, rectRadius: 0.12, shadow: shadow(), objectName: "chart card" });
-  tb(s, "탐지 재현율, 문갑도 업체 칩 48장 (정답 47)", { x: 0.85, y: 2.05, w: 5.2, h: 0.3, fontSize: 11.5, bold: true });
-  s.addChart(pres.ChartType.bar, [{ name: "재현율", labels: ["공개 UAVVaste 모델", "AI Hub 거리별 학습 모델"], values: [0.28, 0.72] }],
-    chartBase({ x: 0.7, y: 2.4, w: 5.4, h: 1.85, barDir: "bar", valAxisMinVal: 0, valAxisMaxVal: 1, dataLabelFormatCode: "0.00", catAxisLabelFontSize: 10, catAxisOrientation: "maxMin", valAxisHidden: true, valGridLine: { style: "none" } }));
-  card(s, 0.6, 4.45, 5.6, 2.05, { head: "같은 모델이 다른 해안에서도", body: "하와이 항공 정사영상 420칩: 재학습 없이 0.24 → 현지 사진 10분 미세조정 0.58 → 8클래스·1024 px 0.69(AP50 0.62). 야간 10분 영상의 종이상자 30개는 개방형 탐지(YOLO-World)에 이름만 추가해 잡았습니다.", headSize: 13, bodySize: 11 });
+  s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "02 솔루션" });
+  s.addText("무엇이 어디에: 통합 탐지 모델과 3D 위치", { placeholder: "title" });
+  sub(s, "제품 모델은 AI Hub·하와이·튀니지·문갑도를 합친 단일 통합 모델(5,405장·13클래스)로 갑니다. 현장마다 재현율이 엇갈려 지금 서비스 기본 가중치는 AI Hub 11종이고, 30 에폭 결과로 재비교합니다.");
+  s.addShape(pres.ShapeType.roundRect, { x: 0.6, y: 1.95, w: 5.6, h: 2.75, fill: { color: H.lt1 }, line: { color: H.lt1 }, rectRadius: 0.12, shadow: shadow(), objectName: "chart card" });
+  tb(s, "탐지 재현율, 현장별 (클래스 무시, IoU 0.3, conf 0.25)", { x: 0.85, y: 2.05, w: 5.2, h: 0.3, fontSize: 11.5, bold: true });
+  s.addChart(pres.ChartType.bar, [
+      { name: "AI Hub 단일 모델", labels: ["문갑도 칩 48", "튀니지 179장", "하와이 420칩"], values: [0.74, 0.14, 0.10] },
+      { name: "다중 현장 통합 모델", labels: ["문갑도 칩 48", "튀니지 179장", "하와이 420칩"], values: [0.53, 0.52, 0.36] },
+    ],
+    chartBase({ x: 0.7, y: 2.4, w: 5.4, h: 2.25, barDir: "col", valAxisMinVal: 0, valAxisMaxVal: 1, dataLabelFormatCode: "0.00", catAxisLabelFontSize: 10, valAxisLabelFormatCode: "0.0", chartColors: [H.accent4, H.accent1], showLegend: true, legendPos: "b", legendFontSize: 9, legendFontFace: "+mn-lt", legendColor: H.accent4, barGapWidthPct: 80 }));
+  card(s, 0.6, 4.85, 5.6, 1.65, { head: "왜 통합인가, 무엇이 남았나", body: "운용 고도 GSD(2~4 cm/px)로 축소한 AI Hub 학습셋이 문갑도 재현율 0.28(공개 UAVVaste) → 0.72의 원인. 통합 모델은 낯선 현장(튀니지 0.14 → 0.52)에서 낫고 주 현장(문갑도 0.74 → 0.53)에서는 아직 떨어집니다. 현장 10분 미세조정(하와이 0.24 → 0.69)은 보조 수단.", headSize: 12.5, bodySize: 10.5 });
   s.addImage({ path: img("fig_16_0015_야간_상자30개_지도.jpg"), x: 6.5, y: 1.95, w: 2.55, h: 2.9, objectName: "0015 야간 상자 30개 지도" });
   tb(s, "야간 10분 통과 비행(0015): 상자 30개 자동 지도화, 3D 뼈대 25/25 구간 성공", { x: 6.5, y: 4.9, w: 2.55, h: 0.45, fontSize: 9, color: C.accent4, valign: "top" });
   s.addShape(pres.ShapeType.roundRect, { x: 9.3, y: 1.95, w: 3.43, h: 2.9, fill: { color: H.lt1 }, line: { color: H.lt1 }, rectRadius: 0.12, shadow: shadow(), objectName: "table card" });
@@ -375,8 +390,8 @@ async function icon(name, colorHex, size = 256) {
   ], { x: 9.55, y: 2.4, w: 2.95, colW: [1.7, 1.25], fontSize: 9.5, color: H.dk1, border: { type: "solid", color: "C9D6DE", pt: 0.5 }, fill: { color: H.lt1 }, rowH: 0.34, margin: 0.04, objectName: "position accuracy" });
   tb(s, "* SRT 고도가 틀린 경우 GPS 경로로 축척을 자동 선택", { x: 9.55, y: 4.12, w: 3.0, h: 0.5, fontSize: 9, color: C.accent4, valign: "top" });
   card(s, 6.5, 5.4, 6.23, 1.12, { head: "위치 50 m 오차는 이렇게 사라진다", body: "드론 GPS 대신 3D 카메라 자세로 탐지 박스 → 광선 → 지면 교차. 호버링(시차 5° 미만)은 평면 교차로 자동 복귀, 물체마다 오차반경(r95) 기록.", headSize: 12, bodySize: 10 });
-  refs(s, "근거: Martin et al. (2018) MPB 131:662–673 · Fallati et al. (2019) STOTEN 693:133581 · Hartley & Sturm (1997) CVIU 68(2):146–157 · 팀 교차평가(figures/cross_eval.json), 삼각측량 패치 docs/삼각측량_위치보정.md", 0.6, 6.62, 12.1, 0.36);
-  s.addNotes("운용 고도 GSD에 맞춘 학습셋이 차별점(0.28→0.72). 위치는 1장의 50 m가 GPS 자체 수준(1 m대)으로.");
+  refs(s, "근거: Martin et al. (2018) MPB 131:662–673 · Fallati et al. (2019) STOTEN 693:133581 · Hartley & Sturm (1997) CVIU 68(2):146–157 · 팀 교차평가 figures/cross_eval_multi.json(그림 21), 삼각측량 패치 docs/삼각측량_위치보정.md", 0.6, 6.62, 12.1, 0.36);
+  s.addNotes("단일 통합 모델 노선(10-02 결정). 현장별 엇갈림을 숨기지 않는다. 위치는 1장의 50 m가 GPS 자체 수준(1 m대)으로.");
 
   // 부피·무게
   s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "02 솔루션" });
@@ -390,7 +405,7 @@ async function icon(name, colorHex, size = 256) {
   tb(s, "0007 큰 상자 32.4 L → 3D 38.8 L. 업체 방식은 같은 상자에서 기준의 1/112·1/180.", { x: 0.85, y: 6.22, w: 4.9, h: 0.2, fontSize: 8.5, color: C.accent4 });
   card(s, 6.3, 1.95, 6.43, 1.45, { head: "부피: SAM 2 투표 + 지역 바닥 평면 + 높이지도", body: "조밀 점 243만 개 중 24프레임 마스크 일치율 70% 이상인 점만. 바닥점(<3 cm)·뒤집힌 카메라 포즈 자동 제외. 볼록껍질은 +60% 과대라 폐기.", headSize: 12.5, bodySize: 10.5 });
   card(s, 6.3, 3.55, 6.43, 1.45, { head: "무게: 겉보기밀도 × 젖음·압축 계수 → 구간", body: "스티로폼 20~25, 플라스틱 60, 어망·로프 100~400 kg/m³에 젖음·마대 압축 계수. 실측 30개가 모이면 conformal 예측구간으로 교체(코드 완료), 지금은 ×/÷2 구간.", headSize: 12.5, bodySize: 10.5 });
-  card(s, 6.3, 5.15, 6.43, 1.3, { head: "재방문 규칙: 계획을 바꾸는 불확실성만", body: "구간 상한이 1인 운반 한계 23 kg(NIOSH)·마대·트럭 적재 경계를 넘나드는 물체만 2차 선회. 묻힘 의심(면적 넓고 높이 없음) 태그.", headSize: 12.5, bodySize: 10.5 });
+  card(s, 6.3, 5.15, 6.43, 1.3, { head: "재방문 규칙: 계획을 바꾸는 불확실성만", body: "구간 상한이 1인 운반 한계 23 kg(NIOSH)·마대·트럭 적재 경계를 넘나드는 물체만 2차 선회(설계). 시뮬레이터의 신뢰도 기반 재방문과는 다른 규칙. 묻힘 의심(면적 넓고 높이 없음) 태그.", headSize: 12.5, bodySize: 10.5 });
   refs(s, "근거: Westoby et al. (2012) SfM, Geomorphology 179:300–314 · Kako, Morita & Taneda (2020) MPB 155:111127 · Angelopoulos & Bates (2023) Found. Trends ML 16(4):494–591 · 팀 결과 figures/0007_objvol_v2.json, 11_업체방식_vs_3D", 0.6, 6.62, 12.1, 0.36);
   s.addNotes("부피→무게→구간. 무게 실측은 아직 없어 기준값이 '정답 부피 × 가정 밀도'임을 질문 받으면 솔직히: 저울 실측이 로드맵 1단계.");
 
@@ -423,11 +438,11 @@ async function icon(name, colorHex, size = 256) {
   s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "02 솔루션" });
   s.addText("수거 경로: 사람이 갈 수 있는 길로, 지자체 조건에 맞춰", { placeholder: "title" });
   sub(s, "정거장별 인력·마대·트럭을 계산한 뒤 집하장에서 출발하는 순회 경로(최근접 이웃 + 2-opt)를 냅니다. 접근로·로드뷰 반영은 설계 단계입니다.", 10.4);
-  tag(s, "일부 설계 중", 11.18, 1.4, true);
+  tag(s, "일부 미구현", 11.18, 1.4, true);
   const rt = [
     ["FaCity", "지자체 조건 입력", "인원·차량(트럭 적재량)·작업 시간·마대 규격. 지자체마다 다르므로 설정값으로 둡니다."],
-    ["FaWalking", "통행 가능 구역 마스킹", "해안 접근로·로드뷰 기반 진입 지점. 해변은 차량 진입이 제한되므로 하역 지점을 따로 둡니다. (설계 중)"],
-    ["FaRoute", "정거장 순회 경로", "물체 위치·무게 구간·집하장을 넣어 정거장별 동선과 왕복 횟수를 계산합니다. 니하우 331 정거장·71.9 km. (구현)"],
+    ["FaWalking", "통행 가능 구역 마스킹", "바다·숲 지형 마스크는 구현. 통행 가능 구역·하역 지점·로드뷰 접근로는 미구현이라 한계에 명시합니다."],
+    ["FaRoute", "정거장 순회 경로 (구현)", "정거장 묶음 → 최단 이동 → 2-opt. 물체 위치·무게 구간·집하장을 넣어 정거장별 동선과 왕복 횟수를 계산합니다. 니하우 331 정거장·71.9 km."],
     ["FaClipboardList", "작업카드 · 대시보드", "정거장별 HTML 카드(썸네일·위경도·추정/최대 kg·인력·휴대폰 길찾기). 현장 '못 찾음·수거 완료' 체크로 다음 비행을 보정합니다."],
   ];
   rt.forEach((r, i) => card(s, 0.6 + i * 3.075, 1.95, 2.9, 3.3, { icon: r[0], head: r[1], body: r[2], headSize: 13.5, bodySize: 11.5 }));
@@ -444,23 +459,26 @@ async function icon(name, colorHex, size = 256) {
   // 검증 요약표
   s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "03 검증" });
   s.addText("검증 요약: 가설 · 설계 · 결과", { placeholder: "title" });
-  sub(s, "완료 7건, 진행 중 3건. 수치는 모두 저장소의 로그·JSON에서 재현됩니다.");
-  const okc = { text: "완료", options: { bold: true, color: "0A7A2F", fontSize: 9.5, align: "center" } };
-  const runc = { text: "진행 중", options: { bold: true, color: "B35A00", fontSize: 9.5, align: "center" } };
+  sub(s, "완료 9건, 예정·진행 중 3건. 수치는 모두 저장소의 로그·JSON에서 재현됩니다.");
+  const okc = { text: "완료", options: { bold: true, color: "0A7A2F", fontSize: 9, align: "center" } };
+  const runc = { text: "진행 중", options: { bold: true, color: "B35A00", fontSize: 9, align: "center" } };
+  const planc = { text: "예정", options: { bold: true, color: "B35A00", fontSize: 9, align: "center" } };
   s.addTable([
     [hdr("실험"), hdr("가설"), hdr("설계"), hdr("결과"), hdr("상태")],
     ["A 부피", "영상 3D로 잰 부피가 실측과 ±20% 안에 든다", "크기 아는 상자 3개, 7 m 선회(0007)·2 m 왕복(0010)", "+19% / +20% / −10%. 업체 방식은 1/112·1/180", okc],
     ["B 위치", "3D 자세로 계산한 위치가 GPS와 수 m 안", "0007·0010 실기체 + 합성 7개 시나리오", "1.16 m · 8.07→0.51 m(축척 자동) · 합성 0.01~0.11 m", okc],
-    ["C 탐지", "운용 고도 GSD로 학습하면 현장 재현율이 오른다", "문갑도 칩 48·하와이 420칩·튀니지 179장 교차평가", "문갑도 0.28→0.72 · 하와이 0.24→0.69(미세조정)", okc],
+    ["C 탐지", "운용 고도 GSD로 학습하면 현장 재현율이 오른다", "문갑도 칩 48·하와이 420칩·튀니지 179장 교차평가", "문갑도 0.28→0.72(AI Hub) · 통합 모델 0.53/0.52/0.36 (현장별 엇갈림)", okc],
     ["D 재방문", "애매한 후보만 재방문하면 짧은 추가 비행으로 재현율↑", "문갑도 정사영상 가상비행 100×100 m, 라벨 7개", "0.71→0.86, +697 m (25회 중 22회 기각)", okc],
     ["E 야간 통과", "통과 비행만으로 탐지·지도·3D 뼈대가 된다", "0015 야간 10분, 4K 60 fps, 상자 ~28개", "탐지 30개 · 3D 뼈대 25/25 · 부피는 선회 필요", okc],
-    ["F 핫스팟", "몰리고, 다시 쌓이고, 과거로 짠 경로가 통한다", "하와이 2015 항공조사 · NOAA MDMAP 134곳 · 텍사스 33곳", "상위 10% 칸 75% · 순위상관 0.88 · 61% vs 36%", okc],
-    ["G 해안 적용", "같은 파이프라인이 다른 해안에서 수거계획을 낸다", "니하우 섬 칩 553장, 10분 미세조정", "5,476개 · 7.9~33.6 t · 마대 1,082 · 트럭 37", okc],
-    ["무게 실측", "부피 × 밀도 무게가 저울 무게와 맞는다", "상자 3개 + 문갑도 실측 30개 저울", "기준값 교체 전 (지금은 정답 부피 × 가정 밀도)", runc],
-    ["한국 핫스팟", "국내 정점 시계열에서도 순위상관·커버율이 재현된다", "국가 해안쓰레기 모니터링 정점(2008~) 앞/뒤 기간", "자료 요청 단계", runc],
-    ["예측구간", "종류별 밀도 분포로 포함확률 90% 구간", "실측 쌍 30개 이상, split-conformal", "코드 완료, 데이터 대기", runc],
-  ], { x: 0.6, y: 1.95, w: 12.13, colW: [1.25, 3.3, 3.3, 3.35, 0.93], fontSize: 9.5, color: H.dk1, border: { type: "solid", color: "C9D6DE", pt: 0.5 }, fill: { color: H.lt1 }, rowH: 0.41, margin: 0.04, valign: "middle", objectName: "validation summary" });
-  source(s, "저장소: dohun415/aerodrone_hackathon (docs/파이프라인_결과정리.md, figures/*.json, hotspot/) · HSR2M/hsr1m (island_drone_sim, 삼각측량 패치, incheon_debris_sim)");
+    ["F 반복성(미국)", "몰리고, 다시 쌓이고, 과거로 짠 경로가 통한다", "하와이 2015 항공조사 · NOAA MDMAP 134곳 · 텍사스 33곳", "상위 10% 칸 75% · 순위상관 0.88 · 61% vs 36%", okc],
+    ["G 위성 형상 선별", "형상 점수 상위 30% 길이에 무게의 절반 이상", "니하우 탐지 격자 · 문갑도 라벨 42 · 인천 조석 지도", "니하우 65~67% · 문갑도 62~67% · 인천 하구 3%(조석 모델 99%)", okc],
+    ["H 전략 비교", "핫스팟 30%가 같은 자원으로 전체 지그재그의 2배", "같은 카메라·띠 폭·배터리 모델, 지리 순서·무작위 대조", "15.4 h vs 41.3 h · 67% vs 25~29% · 풍향 반대 시 38%", okc],
+    ["I 해안 적용", "같은 파이프라인이 다른 해안에서 수거계획을 낸다", "니하우 섬 칩 553장, 10분 미세조정", "5,476개 · 7.9~33.6 t · 마대 1,082 · 트럭 37", okc],
+    ["무게 실측·예측구간", "부피 × 밀도 무게가 저울과 맞고, 실측 30개로 90% 구간을 만든다", "상자 3개 + 문갑도 실측 30개 저울, split-conformal", "기준값 교체 전(지금은 정답 부피 × 가정 밀도), 구간 코드 완료", runc],
+    ["선회 고도", "윗면 편향(1.5~3.5 cm)이 고도에 따라 줄어든다", "같은 상자를 3·5·7 m 선회로 촬영", "지금은 7 m·2 m 두 점뿐", planc],
+    ["한국 반복성", "국내 정점 시계열에서도 순위상관·커버율이 재현된다", "국가 해안쓰레기 모니터링 정점(2008~) 앞/뒤 기간", "자료 요청 단계. 국내 검증은 문갑도 라벨 42개 형상 점수뿐", planc],
+  ], { x: 0.6, y: 1.95, w: 12.13, colW: [1.3, 3.25, 3.2, 3.45, 0.93], fontSize: 8.8, color: H.dk1, border: { type: "solid", color: "C9D6DE", pt: 0.5 }, fill: { color: H.lt1 }, rowH: 0.33, margin: 0.03, valign: "middle", objectName: "validation summary" });
+  source(s, "저장소: dohun415/aerodrone_hackathon (docs/파이프라인_결과정리.md, figures/*.json, hotspot/, route_optimization/) · HSR2M/hsr1m (island_drone_sim, 삼각측량 패치, incheon_debris_sim)");
   s.addNotes("한 표로 신뢰성. 결과 없는 항목을 숨기지 않는 것이 이 장의 메시지.");
 
   // 한계와 대응
@@ -470,8 +488,8 @@ async function icon(name, colorHex, size = 256) {
   const lim = [
     ["FaWeightHanging", "무게 실측이 아직 없다", "부피는 검증됐지만 무게 기준값은 '정답 부피 × 가정 밀도'입니다. 상자 3개 저울 실측(1분)과 문갑도 실측 30개로 밀도·구간을 교체합니다."],
     ["FaMapMarkerAlt", "절대 위치의 바닥은 GPS", "드론 GPS가 2 m 밀리면 모든 광선이 같이 밀립니다(r95 ≈ 5 m). RTK, 좌표를 아는 기준 표식, 또는 정사영상↔위성(SkySat) 정합(인라이어 85%, 5~8 m)으로 보정합니다."],
-    ["FaCamera", "7 m 선회의 윗면 편향", "무늬 없는 상자 윗면이 1.5~3.5 cm 높게 복원되고 마스크가 그림자를 포함해 +13~28%. 3~4 m 선회 + 수직 1장 가이드로 줄이며, 3·5·7 m 통제 실험이 남았습니다."],
-    ["FaWater", "핫스팟·조류는 한국 미검증", "핫스팟 수치는 미국 공개 데이터, 조류는 조석 연속방정식 모델입니다. 국가 해안쓰레기 모니터링 정점 시계열과 KHOA·KOOS 실측 해류로 같은 절차를 돌립니다."],
+    ["FaCamera", "7 m 선회의 윗면 편향", "무늬 없는 상자 윗면이 1.5~3.5 cm 높게 복원되고 마스크가 그림자를 포함해 +13~28%. 3~4 m 선회 + 수직 1장 가이드로 줄이며, 3·5·7 m 선회 통제 실험을 예정했습니다(지금은 7 m·2 m 두 점)."],
+    ["FaWater", "반복성은 추론, 하구는 조석 모델", "공간 군집은 자료로 확인했지만(니하우 만 244 vs 곶 40 kg/km) 시간 반복은 아직 문헌·물리 추론입니다. 국가 모니터링 정점 시계열로 검증 예정. 하구에서는 위성 형상이 무력(인천 3%)해 조석 모델을 결합합니다."],
   ];
   lim.forEach((l, i) => card(s, 0.6 + i * 3.075, 1.95, 2.9, 4.0, { icon: l[0], head: l[1], body: l[2], headSize: 14, bodySize: 12 }));
   s.addNotes("한계를 먼저 말하면 질문이 줄어든다. 각 항목에 대응책이 붙어 있다.");
@@ -488,8 +506,8 @@ async function icon(name, colorHex, size = 256) {
   s.addText("위성이 넓게 보고, 드론이 자세히 재고, 지자체가 배차한다", { placeholder: "title" });
   sub(s, "3DLabs의 위성 지상국·ARD 플랫폼 위에 드론 측정 계층을 얹어, 활용 분야(도시·산림·항만·수체변화)에 '해안쓰레기 수거계획'을 추가합니다.");
   const roles = [
-    ["FaSatellite", "3DLabs · 위성 계층", ["위성 지상국 운영, 1:5,000 도엽 정사영상·ARD(Analysis Ready Data) 생산", "광역 집적 패치 탐지와 시계열 변화 → 핫스팟 경로의 사전값", "B2G 공급 채널(공공 활용 플랫폼)"], H.dk2, true],
-    ["FaPlane", "붕붕이 · 드론 계층", ["핫스팟 경로, 커버리지·재방문 비행, 탐지·3D 위치·SfM 부피", "무게 예측구간과 23 kg·마대·트럭 경계 재방문 규칙", "정거장별 작업카드(인력·마대·트럭·경로), 대시보드"], "124A6E", true],
+    ["FaSatellite", "3DLabs · 위성 계층", ["위성의 역할은 탐지가 아니라 해안선 갱신(송도·소래 매립)·형상 점수·선별", "Sentinel-2 공개자료로 시작, 상용 고해상 위성은 띠 폭·해안선 정확도를 올리는 상위 상품", "하구에서는 조석·수리 모델 결합이 필요 → 제휴 포인트"], H.dk2, true],
+    ["FaPlane", "붕붕이 · 드론 계층", ["핫스팟 경로 KML, 조종자 비행, 탐지·3D 위치·SfM 부피", "무게 구간과 23 kg·마대·트럭 경계 2차 선회(설계)", "정거장별 작업카드(인력·마대·트럭·경로), 대시보드"], "124A6E", true],
     ["FaUsers", "고객 · 지자체 계층", ["시군 해양수산 부서: 예산·배차", "수거 용역업체: 동선·인원", "해양환경공단: 반복 모니터링 데이터(핫스팟 이력)"], H.lt2, false],
   ];
   roles.forEach((r, i) => {
@@ -517,7 +535,7 @@ async function icon(name, colorHex, size = 256) {
   s.addText("공동 실증 로드맵 (제안)", { placeholder: "title" });
   sub(s, "세 단계, 각 단계의 끝에 숫자로 확인할 수 있는 결과를 두었습니다.");
   const ph = [
-    ["1", "2026 4분기", "데이터 보정", ["상자 3개 + 문갑도 실측 30개 저울 → 밀도·예측구간(포함확률 90%) 교체", "국가 해안쓰레기 모니터링 정점 시계열로 핫스팟 순위상관·커버율 재현", "위성 ARD 샘플 2~3개 해안으로 집적 사전값 vs 실제 패치 비교"], "산출: 실측 기반 무게 구간, 한국 핫스팟 검증 보고"],
+    ["1", "2026 4분기", "데이터 보정", ["상자 3개 저울 실측 + 3·5·7 m 선회 통제 실험 → 밀도·편향 보정", "문갑도 핫스팟 30% vs 전체를 같은 날 비행해 라벨로 비교, 국가 모니터링 정점 시계열로 반복성 검증", "통합 모델 30 에폭 재비교, 위성 ARD 샘플 2~3개 해안으로 형상 점수 vs 실제 패치"], "산출: 실측 기반 무게 구간, 한국 핫스팟 검증 보고"],
     ["2", "2027 상반기", "지자체 시범", ["시군 1곳(인천 옹진 또는 전남 도서) 해안 3구간, 2회 이상 반복 비행", "실측 해류(KHOA·KOOS) 교체, RTK 또는 기준 표식 도입", "비행 1회 → 작업카드 → 실제 수거량·마대·트럭과 대조"], "산출: 추정 vs 실제 수거량 오차, 마대·트럭 적중률"],
     ["3", "2027 하반기", "위성 결합 · 상용", ["위성 변화 탐지로 비행 시점·구간 자동 추천", "KOEM 2개월 모니터링과 연동한 반복 조사 상품(이력 갱신)", "B2G 플랫폼 활용 분야에 '해안쓰레기' 추가"], "산출: 구독형 수거계획 서비스, 레퍼런스 1곳"],
   ];
@@ -539,7 +557,7 @@ async function icon(name, colorHex, size = 256) {
   s.addText("함께 검증하고 싶은 것", { placeholder: "title" });
   tb(s, "세 가지를 요청드립니다. 모두 1단계(2026 4분기) 안에 결과를 숫자로 돌려드릴 수 있는 범위입니다.", { x: 0.6, y: 1.32, w: 12.1, h: 0.45, fontSize: 14, color: C.accent5 });
   const asks = [
-    ["FaDatabase", "위성 ARD 샘플", "대상 해안 2~3곳(인천·강화 도서 또는 전남 도서)의 정사영상·시계열. 집적 사전값과 실제 패치를 대조하고 핫스팟 경로의 입력으로 씁니다."],
+    ["FaDatabase", "위성 ARD 샘플", "대상 해안 2~3곳(인천·강화 도서 또는 전남 도서)의 정사영상·시계열. 해안선 갱신과 형상 점수의 입력으로 쓰고 실제 패치와 대조합니다."],
     ["FaHandshake", "시범 지자체 소개", "B2G 채널로 연결된 시군 1곳. 비행 1회로 작업카드를 내고 실제 수거량·마대·트럭과 대조합니다."],
     ["FaLayerGroup", "데이터 연동 규격 협의", "ARD → 핫스팟 사전값 입력, 드론 결과(GeoJSON·CSV·작업카드) → 플랫폼 활용 분야 등록. 양방향 포맷을 먼저 맞춥니다."],
   ];
