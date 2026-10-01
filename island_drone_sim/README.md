@@ -10,7 +10,7 @@ island_aviary.py  CtrlAviary 서브클래스: plane.urdf 대신 heightfield를 �
 fly_island.py     산 정상을 중심으로 선회 비행 + 로그/지도/영상 생성
 ```
 
-## 설치
+## 설치 (Linux / macOS)
 
 ```bash
 git clone https://github.com/learnsyslab/gym-pybullet-drones
@@ -20,6 +20,39 @@ pip install --no-deps -e gym-pybullet-drones             # RL용 torch/SB3는 �
 ```
 
 GPU나 디스플레이가 없어도 된다(PyBullet DIRECT 모드 + 소프트웨어 렌더러).
+
+## 설치 (Windows)
+
+PyPI에는 PyBullet의 Windows용 wheel이 없어서 `pip install pybullet`은 C++ 컴파일러(Visual Studio
+Build Tools)를 요구한다. **conda-forge에는 Windows용 바이너리가 있으므로 Miniforge를 쓰는 것이 가장 쉽다.**
+
+주의할 점:
+- `C:\WINDOWS\system32`에서 작업하지 말고 사용자 폴더(예: `C:\dev`)를 만들어 그 안에서 한다.
+- Windows PowerShell 5.x는 `&&`를 지원하지 않는다. 줄을 나누거나 `;`를 쓴다.
+- `pip`가 "Fatal error in launcher"를 내면 `python -m pip`로 실행한다.
+- `python3.12`라는 명령은 Windows에 없다. `py -3.12` 또는 `python`을 쓴다.
+
+```powershell
+# 1) 작업 폴더
+mkdir C:\dev; cd C:\dev
+git clone -b claude/ecstatic-franklin-nhsyss https://github.com/HSR2M/hsr1m
+git clone https://github.com/learnsyslab/gym-pybullet-drones
+
+# 2) Miniforge 설치 (https://conda-forge.org/download/) 후 "Miniforge Prompt"에서
+conda create -n drones -c conda-forge python=3.12 pybullet numpy scipy gymnasium matplotlib pillow transforms3d ffmpeg -y
+conda activate drones
+python -m pip install --no-deps -e C:\dev\gym-pybullet-drones
+
+# 3) 실행 (GUI로 직접 보기)
+cd C:\dev\hsr1m\island_drone_sim
+python fly_island.py --island wolmido --gui
+python fly_island.py --island wolmido --video --video_fps 1     # 영상은 ffmpeg 필요
+```
+
+conda 없이 가려면: Visual Studio Build Tools에서 "C++를 사용한 데스크톱 개발" 워크로드를 설치한 뒤
+`py -3.12 -m venv venv`, `.\venv\Scripts\Activate.ps1`, `python -m pip install -r requirements.txt`
+순서로 하면 PyBullet이 소스에서 컴파일된다(10분 안팎). Activate.ps1이 실행 정책에 막히면
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`를 한 번 실행한다.
 
 ## 실행
 
