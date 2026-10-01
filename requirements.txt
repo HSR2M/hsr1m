@@ -1,0 +1,12 @@
+numpy>=1.26
+scipy>=1.11
+matplotlib>=3.8
+pillow>=10
+basemap>=1.4          # GSHHG 해안선 (basemap-data-hires 포함 설치)
+basemap-data-hires
+koreanize-matplotlib  # 한글 폰트(NanumGothic)
+requests
+# 선택: 실측 해류 NetCDF 사용 시
+netCDF4
+# 선택: Copernicus Marine 자료 다운로드 시
+# copernicusmarine
