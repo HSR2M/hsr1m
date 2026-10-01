@@ -1,0 +1,782 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>드론대장 붕붕이 수거계획</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 레이아웃: 상단 고정 챕터 내비 + 한 줄 본문(최대 1080px). 4장(제품)만 대시보드 격자로 넓어진다. */
+:root{
+  --bg:#f4f6f3; --surface:#fdfdfb; --surface-2:#eceeea;
+  --fg:#101417; --fg-2:#4d5559; --muted:#7f878b;
+  --line:#dfe3df; --line-2:#c9cfca;
+  --accent:#1c5cab; --accent-soft:#dbe7f7;
+  --s1:#2a78d6; --s1-soft:#cde2fb; --s2:#eb6834; --s2-soft:#fde0d3; --neutral-mark:#b5bcb8;
+  --good:#0ca30c; --warn:#c98500; --crit:#d03b3b;
+  --sans:"IBM Plex Sans KR",system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --radius:6px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121518; --surface:#1b1f23; --surface-2:#23282d;
+    --fg:#f2f3f1; --fg-2:#c3c8c4; --muted:#8c9497;
+    --line:#2c3237; --line-2:#3a4147;
+    --accent:#6ea6ee; --accent-soft:#1e2f45;
+    --s1:#3987e5; --s1-soft:#1e3a5c; --s2:#d95926; --s2-soft:#4a2416; --neutral-mark:#55605f;
+    --good:#0ca30c; --warn:#fab219; --crit:#e66767;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121518; --surface:#1b1f23; --surface-2:#23282d;
+  --fg:#f2f3f1; --fg-2:#c3c8c4; --muted:#8c9497;
+  --line:#2c3237; --line-2:#3a4147;
+  --accent:#6ea6ee; --accent-soft:#1e2f45;
+  --s1:#3987e5; --s1-soft:#1e3a5c; --s2:#d95926; --s2-soft:#4a2416; --neutral-mark:#55605f;
+  --good:#0ca30c; --warn:#fab219; --crit:#e66767;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:16px;line-height:1.65;margin:0;-webkit-text-size-adjust:100%;word-break:keep-all;overflow-wrap:anywhere}
+a{color:var(--accent)}
+h1,h2,h3,h4{text-wrap:balance;margin:0;line-height:1.25}
+p{margin:0}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:20px}
+.prose{max-width:66ch}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--mono)}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.fg2{color:var(--fg-2)}
+
+/* 내비 */
+.nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.nav .wrap{display:flex;align-items:center;gap:10px;min-height:52px;flex-wrap:wrap;padding-block:6px}
+.nav .brand{font-weight:600;font-size:14px;margin-right:auto;white-space:nowrap}
+.nav .brand small{font-weight:400;color:var(--muted);margin-left:8px}
+.nav ol{list-style:none;margin:0;padding:0;display:flex;gap:4px;flex-wrap:wrap}
+.nav a{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;text-decoration:none;color:var(--fg-2);font-size:13px;font-weight:500;border:1px solid transparent}
+.nav a .k{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.nav a:hover{background:var(--surface-2)}
+.nav a[aria-current="true"]{background:var(--accent-soft);color:var(--fg);border-color:transparent}
+.nav a:focus-visible,button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* 히어로 */
+.hero{padding-block:56px 40px;border-bottom:1px solid var(--line)}
+.hero h1{font-size:clamp(30px,5vw,48px);font-weight:700;letter-spacing:-.01em;margin-top:14px}
+.hero .lead{font-size:18px;color:var(--fg-2);margin-top:18px;max-width:62ch}
+.hero .flow{display:flex;gap:8px;flex-wrap:wrap;margin-top:28px;align-items:center}
+.hero .flow span{padding:6px 12px;border:1px solid var(--line-2);border-radius:999px;font-size:13px;background:var(--surface)}
+.hero .flow i{color:var(--muted);font-style:normal}
+
+/* 섹션 */
+section.ch{padding-block:64px;border-bottom:1px solid var(--line)}
+.ch-head{display:grid;grid-template-columns:auto 1fr;gap:16px 24px;align-items:baseline;margin-bottom:28px}
+.ch-head .no{font-family:var(--mono);font-size:13px;color:var(--muted);padding-top:6px}
+.ch-head h2{font-size:clamp(24px,3.4vw,34px);font-weight:700}
+.ch-head .sub{grid-column:2;color:var(--fg-2);max-width:66ch;font-size:17px}
+.block{margin-top:40px}
+.block > h3{font-size:19px;font-weight:600;margin-bottom:8px}
+.block > .prose{color:var(--fg-2)}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width:860px){.g3,.g4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.g2,.g3,.g4{grid-template-columns:1fr}.ch-head{grid-template-columns:1fr}.ch-head .sub{grid-column:1}.nav .brand small{display:none}.nav .wrap{gap:6px}.kpis{grid-template-columns:1fr 1fr}.seg{grid-template-columns:repeat(3,minmax(0,1fr))}.dash .bar input,.dash .bar select{width:100px}}
+
+/* 카드·타일 */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;min-width:0}
+.tile .label{font-size:13px;color:var(--fg-2)}
+.tile .value{font-size:36px;font-weight:600;line-height:1.1;margin-top:8px;letter-spacing:-.01em}
+.tile .value small{font-size:16px;font-weight:500;color:var(--fg-2);margin-left:4px}
+.tile .note{font-size:13px;color:var(--muted);margin-top:8px}
+.tile.alert .value{color:var(--s2)}
+.hero-fig{font-size:clamp(44px,7vw,72px);font-weight:600;line-height:1;letter-spacing:-.02em}
+.callout{border-left:3px solid var(--accent);padding:12px 18px;background:var(--surface);border-radius:0 var(--radius) var(--radius) 0;font-size:17px}
+.callout b{font-weight:600}
+.pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;letter-spacing:.04em;padding:3px 9px;border-radius:999px;border:1px solid var(--line-2);color:var(--fg-2);white-space:nowrap}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--neutral-mark)}
+.pill.done::before{background:var(--good)}
+.pill.run::before{background:var(--warn)}
+.pill.plan::before{background:var(--neutral-mark)}
+.pill.wait::before{background:var(--s2)}
+.slot{border:1.5px dashed var(--line-2);border-radius:var(--radius);padding:16px;color:var(--muted);font-size:13px;display:flex;flex-direction:column;gap:4px;justify-content:center;min-height:120px;background:transparent}
+.slot b{color:var(--fg-2);font-weight:500}
+figure{margin:0}
+figure img,figure video{display:block;width:100%;max-width:100%;height:auto;border-radius:var(--radius);border:1px solid var(--line)}
+figcaption{font-size:13px;color:var(--muted);margin-top:8px}
+.srcs{font-size:12.5px;color:var(--muted);margin-top:16px;line-height:1.6}
+.srcs a{color:var(--muted)}
+
+/* 표 */
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl th,.tbl td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{font-weight:600;color:var(--fg-2);font-size:12.5px;letter-spacing:.02em}
+.tbl td.n,.tbl th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.tblwrap{overflow-x:auto}
+
+/* 차트 */
+.chart{position:relative}
+.chart .head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.chart .title{font-weight:600;font-size:15px}
+.chart .desc{font-size:13px;color:var(--muted)}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart text{font-family:var(--sans);font-size:12px;fill:var(--fg-2)}
+.chart text.axis{fill:var(--muted);font-family:var(--mono);font-size:11px}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .base{stroke:var(--line-2);stroke-width:1}
+.chart .mark{cursor:default}
+.chart .mark:focus{outline:none}
+.chart .mark:hover,.chart .mark:focus{filter:brightness(.92)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--fg-2);margin-top:6px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.btn{font:inherit;font-size:12.5px;padding:4px 10px;border:1px solid var(--line-2);background:var(--surface);color:var(--fg-2);border-radius:999px;cursor:pointer}
+.btn:hover{background:var(--surface-2)}
+.tip{position:fixed;z-index:50;pointer-events:none;background:var(--fg);color:var(--bg);font-size:12.5px;padding:6px 9px;border-radius:4px;max-width:260px;line-height:1.45;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+.tip[hidden]{display:none}
+
+/* 2장 모듈 */
+.mod{display:grid;grid-template-columns:1fr;gap:14px}
+.mod .card{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.4fr);gap:8px 28px}
+@media (max-width:760px){.mod .card{grid-template-columns:1fr}}
+.mod h4{font-size:16px;font-weight:600;margin-bottom:6px}
+.mod .what{font-size:14px;color:var(--fg-2)}
+.mod .refs{font-size:13.5px;display:flex;flex-direction:column;gap:8px}
+.mod .ref{padding-left:12px;border-left:2px solid var(--line-2)}
+.mod .ref b{font-weight:500;color:var(--fg)}
+.mod .ref .cite{font-family:var(--mono);font-size:11.5px;color:var(--muted);display:block;margin-top:2px}
+.mod .ours{grid-column:1/-1;font-size:14px;padding-top:10px;border-top:1px solid var(--line);margin-top:4px}
+.mod .ours b{font-weight:600}
+.pipe{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0 22px}
+.pipe span{padding:5px 10px;border-radius:4px;background:var(--surface-2);font-size:13px;font-weight:500}
+.pipe i{color:var(--muted);font-style:normal;font-size:12px}
+
+/* 3장 실험 */
+.exp{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+.exp .meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+@media (max-width:760px){.exp .meta{grid-template-columns:1fr}}
+.exp .meta h5{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin:0 0 6px;font-weight:500}
+.exp .meta p{font-size:14px;color:var(--fg-2)}
+.exp-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.exp-head h3{font-size:19px;font-weight:600}
+.exp-head .id{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.result{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px}
+@media (max-width:760px){.result{grid-template-columns:1fr}}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:14px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* 4장 대시보드 */
+.dash{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:16px}
+.dash .bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.dash .bar .f{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted)}
+.dash .bar input,.dash .bar select{font:inherit;font-size:14px;padding:5px 8px;border:1px solid var(--line-2);border-radius:4px;background:var(--surface);color:var(--fg);width:120px}
+.dash .bar .spacer{flex:1}
+.dash .grid{gap:12px}
+.dash .card{padding:14px 16px}
+.dash .card h4{font-size:14px;font-weight:600;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:860px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi .label{font-size:12.5px;color:var(--fg-2)}
+.kpi .value{font-size:28px;font-weight:600;margin-top:4px;line-height:1.1}
+.kpi .value small{font-size:13px;font-weight:500;color:var(--fg-2);margin-left:3px}
+.kpi .range{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:4px}
+.seg{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:2px}
+.seg div{height:52px;border-radius:3px;display:flex;flex-direction:column;justify-content:space-between;padding:5px 7px;font-size:12px;color:var(--fg);position:relative}
+.seg div b{font-family:var(--mono);font-weight:500}
+.seg div small{font-family:var(--mono);font-size:10.5px;color:var(--fg-2)}
+.seg .lvl1{background:var(--s1-soft)}
+.seg .lvl2{background:color-mix(in srgb,var(--s1) 38%,var(--surface))}
+.seg .lvl3{background:color-mix(in srgb,var(--s1) 62%,var(--surface));color:#fff}
+.seg .lvl3 small{color:rgba(255,255,255,.8)}
+.cands{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:13.5px}
+.cands li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+.cands li .why{color:var(--muted);font-size:12.5px}
+.cands li .id{font-family:var(--mono);font-size:12px;white-space:nowrap}
+.cands li .rng{font-family:var(--mono);font-size:12px;color:var(--fg-2);white-space:nowrap}
+.cands li::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--s2);margin-right:2px}
+.dash .note{font-size:12.5px;color:var(--muted);margin-top:10px}
+.out{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:560px){.out{grid-template-columns:1fr}}
+.out .card{text-align:left}
+.out .value{font-size:30px;font-weight:600;line-height:1.1}
+.out .value small{font-size:13px;color:var(--fg-2);font-weight:500;margin-left:3px}
+.out .rule{font-size:12px;color:var(--muted);margin-top:6px}
+
+/* 부록 */
+.refs-list{list-style:none;margin:0;padding:0;display:grid;gap:10px;font-size:13.5px}
+.refs-list li{padding-left:14px;border-left:2px solid var(--line-2);color:var(--fg-2)}
+.refs-list b{color:var(--fg);font-weight:500}
+.status-tbl td:first-child{white-space:nowrap}
+footer{padding-block:36px 48px;font-size:13px;color:var(--muted)}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+</style>
+
+<nav class="nav" aria-label="챕터">
+  <div class="wrap">
+    <div class="brand">드론대장 붕붕이 <small>연안 해양쓰레기 수거계획</small></div>
+    <ol>
+      <li><a href="#problem"><span class="k">1</span>문제</a></li>
+      <li><a href="#evidence"><span class="k">2</span>기술 근거</a></li>
+      <li><a href="#validation"><span class="k">3</span>검증</a></li>
+      <li><a href="#product"><span class="k">4</span>제품</a></li>
+      <li><a href="#appendix"><span class="k">+</span>부록</a></li>
+    </ol>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">문제 → 근거 → 검증 → 제품 · 2026-10</div>
+    <h1>추정이 틀리면 배차가 틀린다</h1>
+    <p class="lead">해안쓰레기 수거는 "얼마나, 어디에"라는 두 숫자로 트럭·마대·인원을 정한다. 지금은 그 숫자가 수십 배씩 틀린다. 우리는 드론 한 번 비행으로 구간별 무게와 위치를 <b>예측구간</b>과 함께 내고, 수거계획을 실제로 바꾸는 물체만 다시 날아 계획을 확정한다.</p>
+    <div class="flow" aria-label="파이프라인">
+      <span>커버리지 비행</span><i>→</i><span>탐지</span><i>→</i><span>위치 (삼각측량)</span><i>→</i><span>부피·무게 (SfM)</span><i>→</i><span>예측구간</span><i>→</i><span>재방문 판단</span><i>→</i><span>수거계획</span>
+    </div>
+  </div>
+</header>
+
+<!-- ───────────── 1. 문제 ───────────── -->
+<section class="ch" id="problem">
+  <div class="wrap">
+    <div class="ch-head">
+      <div class="no">01</div>
+      <h2>문제: 숫자로만</h2>
+      <p class="sub">같은 해안, 같은 물체인데 추정 방식에 따라 무게가 수십 배 벌어지고, 위치는 수십 m 빗나간다. 그 추정값이 그대로 예산과 배차가 된다.</p>
+    </div>
+
+    <div class="grid g2">
+      <div class="card chart" id="c-weight">
+        <div class="head"><div><div class="title">문갑도 42개 물체, 두 가지 무게</div><div class="desc">동일 42개 물체 · 업체 품목 계수 합계 vs 드론 3D 부피 × 겉보기밀도</div></div><button class="btn" data-table="t-weight" type="button">표로 보기</button></div>
+        <div class="viz"></div>
+        <table class="tbl" id="t-weight" hidden><thead><tr><th>추정 방식</th><th class="n">무게 (kg)</th></tr></thead><tbody><tr><td>업체 품목 계수</td><td class="n">1.3</td></tr><tr><td>부피 × 겉보기밀도</td><td class="n">101</td></tr></tbody></table>
+        <p class="note muted" style="font-size:13px;margin-top:8px">계수 방식은 "품목 1개 = 평균 몇 g"으로 센다. 어망 뭉치·젖은 스티로폼처럼 크기가 제각각인 물체에서 78배가 벌어졌다.</p>
+      </div>
+      <div class="card tile alert">
+        <div class="label">탐지 위치 오차 (고도 입력이 틀렸을 때, 평면 교차 방식)</div>
+        <div class="value">50<small>m</small></div>
+        <div class="note">수거 인력이 지도를 들고 가도 물체를 못 찾는 거리. 원인은 "카메라 높이와 평지"를 가정하는 위치 계산이다.</div>
+        <div class="label" style="margin-top:22px">거제: 추정 → 실제 수거</div>
+        <div class="value num">437 → 272<small>t</small></div>
+        <div class="note">추정의 62%만 수거. 집행 비용 8천만 원. 남는 트럭과 모자라는 트럭이 동시에 생긴다.</div>
+      </div>
+    </div>
+
+    <div class="grid g3" style="margin-top:16px">
+      <div class="card tile"><div class="label">전남 해양쓰레기 처리비 (팀 조사 기준)</div><div class="value">48<small>만 원 / t</small></div><div class="note">공개 보도 기준 약 50만 원/t. 톤 단위 추정 오차가 곧 수천만 원이다.</div></div>
+      <div class="card tile"><div class="label">시군 자체 부담 비율 (팀 조사 기준)</div><div class="value">25<small>%</small></div><div class="note">국비·도비를 뺀 몫. 수거량 90%가 지자체 손에서 처리된다.</div></div>
+      <div class="card tile"><div class="label">추정이 틀릴 때 틀어지는 것</div><div class="value" style="font-size:22px;line-height:1.3">트럭 대수 · 마대 수량<br>투입 인원 · 작업 일수</div><div class="note">무게는 마대와 트럭을, 위치는 동선과 인원을 정한다.</div></div>
+    </div>
+
+    <div class="callout" style="margin-top:28px"><b>결론.</b> 수거계획의 입력은 "무게·위치"이고, 둘 다 지금은 믿을 수 없는 점 추정이다. 필요한 것은 더 정확한 점 추정이 아니라, <b>얼마나 믿을 수 있는지가 붙은 추정</b>과 그걸 줄이는 가장 싼 방법이다.</div>
+
+    <p class="srcs">출처 · 문갑도 42개·위치 오차: 팀 현장 조사(2026-09, 드론대장 붕붕이 결과자료). 거제 437 t→272 t·8천만 원, 전남 48만 원/t, 시군 25%: 팀 조사 자료(원문 확인 중). 공개 보도 교차확인: 전남 해양쓰레기 처리비 톤당 50만 원 (<a href="https://www.hankookilbo.com/news/article/201904171524371952" target="_blank" rel="noopener">한국일보 2019</a>, <a href="https://www.hankookilbo.com/news/article/201809041565041296" target="_blank" rel="noopener">2018</a>) · 수거비 국비 50%·지방비 50%, 2017~2022 지자체 수거예산 3,654억 원 (<a href="https://www.energydaily.co.kr/news/articleView.html?idxno=131597" target="_blank" rel="noopener">에너지데일리</a>) · 최근 5년 64.9만 t 수거 (<a href="https://www.newsis.com/view/NISX20250924_0003341637" target="_blank" rel="noopener">뉴시스 2025-09</a>) · 2026년 8월 폭우로 거제 757 t 유입 (<a href="https://go.seoul.co.kr/news/newsView.php?id=20260909500324" target="_blank" rel="noopener">서울신문 2026-09</a>).</p>
+  </div>
+</section>
+
+<!-- ───────────── 2. 기술 근거 ───────────── -->
+<section class="ch" id="evidence">
+  <div class="wrap">
+    <div class="ch-head">
+      <div class="no">02</div>
+      <h2>기술 근거: 방법은 검증된 것</h2>
+      <p class="sub">파이프라인의 모듈마다 그 방법을 처음 보인 논문을 붙였다. 새로 발명한 알고리즘은 없다. 우리 기여는 이 검증된 조각들을 수거계획 하나로 잇고, <b>계획을 바꾸는 불확실성만</b> 골라 줄이는 재방문 규칙이다.</p>
+    </div>
+
+    <div class="pipe" aria-hidden="true"><span>탐지</span><i>→</i><span>위치</span><i>→</i><span>부피·무게</span><i>→</i><span>예측구간</span><i>→</i><span>경로·재방문</span><i>→</i><span>집적 예측</span></div>
+
+    <div class="mod">
+      <div class="card">
+        <div><h4>탐지 · 드론 영상에서 해안쓰레기 찾기</h4><p class="what">AI-Hub 해안쓰레기 데이터로 학습한 YOLO 계열 분할 모델. 1초 간격 프레임마다 물체 박스·종류·신뢰도를 낸다.</p></div>
+        <div class="refs">
+          <div class="ref"><b>드론 + 기계학습이 육안 조사보다 약 40배 빠르게 해변을 훑는다</b><span class="cite">Martin, Parkes, Zhang, Zhang, McCabe &amp; Duarte (2018) Marine Pollution Bulletin 131:662–673</span></div>
+          <div class="ref"><b>CNN으로 드론 영상의 해안쓰레기를 자동 탐지 (몰디브 해변)</b><span class="cite">Fallati, Polidori, Salvatore, Saponari, Savini &amp; Galli (2019) Science of the Total Environment 693:133581</span></div>
+        </div>
+        <div class="ours"><b>우리가 더한 것</b> · 같은 물체를 여러 프레임에서 묶는 규칙(쌍별 높이 투표)과 탐지 신뢰도를 위치 가중치로 넘기는 연결.</div>
+      </div>
+
+      <div class="card">
+        <div><h4>위치 · 광선 교차 삼각측량</h4><p class="what">같은 물체를 본 프레임들의 카메라 광선을 서로 교차시켜 위치를 푼다. 3×3 최소제곱 + Huber 가중, 시차 5° 미만이면 평면 교차로 자동 복귀.</p></div>
+        <div class="refs">
+          <div class="ref"><b>다시점 삼각측량의 수치 해법과 최적성</b><span class="cite">Hartley &amp; Sturm (1997) Computer Vision and Image Understanding 68(2):146–157</span></div>
+          <div class="ref"><b>SfM 사진측량: 겹치는 사진만으로 지형을 복원하는 저비용 방법</b><span class="cite">Westoby, Brasington, Glasser, Hambrey &amp; Reynolds (2012) Geomorphology 179:300–314</span></div>
+        </div>
+        <div class="ours"><b>우리가 더한 것</b> · 카메라 높이를 입력받지 않고 역산해 SRT 고도를 검증하고, GPS 편향을 공통 오차로 넣은 몬테카를로 오차 반경(r95)을 물체마다 기록. 1장의 50 m 오차는 이 가정 제거로 사라진다.</div>
+      </div>
+
+      <div class="card">
+        <div><h4>부피·무게 · SfM 3D 복원 → 겉보기밀도</h4><p class="what">선회 비행 사진으로 물체 3D를 복원해 부피를 재고, 종류별 겉보기밀도를 곱해 무게를 낸다. 계수 방식(품목 × 평균무게)을 대체한다.</p></div>
+        <div class="refs">
+          <div class="ref"><b>드론 + SfM + 딥러닝으로 해변 플라스틱 부피를 추정</b><span class="cite">Kako, Morita &amp; Taneda (2020) Marine Pollution Bulletin 155:111127</span></div>
+          <div class="ref"><b>드론 영상 무게 추정 세 방법 비교: 평균무게 계수 방식은 약 40% 과대추정</b><span class="cite">Andriolo et al. (2024) Marine Pollution Bulletin 202:116405</span></div>
+        </div>
+        <div class="ours"><b>우리가 더한 것</b> · 부피를 점이 아니라 구간으로 넘기고, 비행 패턴(선회 vs 경사 통과)이 부피 복원 성공을 가르는 조건을 실험으로 고정(3장 실험 A).</div>
+      </div>
+
+      <div class="card">
+        <div><h4>예측구간 · 무게를 "구간"으로</h4><p class="what">물체별 무게를 하한–상한으로 낸다. 분포 가정 없이 보정 데이터만으로 유한표본 포함확률을 보장하는 conformal prediction.</p></div>
+        <div class="refs">
+          <div class="ref"><b>분포 가정 없는 예측구간, 어떤 모델에도 사후 적용 가능</b><span class="cite">Angelopoulos &amp; Bates (2023) Foundations and Trends in Machine Learning 16(4):494–591</span></div>
+        </div>
+        <div class="ours"><b>우리가 더한 것</b> · 구간이 "23 kg(1인 운반)·마대·트럭" 경계에 걸리는지로 재방문을 결정하는 연결. <span class="pill run">보정 데이터 확보 중</span></div>
+      </div>
+
+      <div class="card">
+        <div><h4>경로 · 커버리지 비행 + 재방문</h4><p class="what">1차는 구간 전체를 빠짐없이 훑는 커버리지 경로, 2차는 불확실한 물체만 다시 가는 재방문 경로.</p></div>
+        <div class="refs">
+          <div class="ref"><b>커버리지 경로계획 방법들의 서베이 (부스트로페돈·격자·셀 분해)</b><span class="cite">Galceran &amp; Carreras (2013) Robotics and Autonomous Systems 61(12):1258–1276</span></div>
+          <div class="ref"><b>불확실성을 줄이는 쪽으로 드론 경로를 고르는 정보 경로계획(IPP)</b><span class="cite">Popović, Vidal-Calleja, Hitz, Chung, Sa, Siegwart &amp; Nieto (2020) Autonomous Robots 44:889–911</span></div>
+          <div class="ref"><b>반복 드론 조사로 해안쓰레기의 시공간 집적을 장기 추적할 수 있다</b><span class="cite">Merlino, Paterni, Berton &amp; Massetti (2020) Remote Sensing 12(8):1260</span></div>
+        </div>
+        <div class="ours"><b>우리가 더한 것</b> · IPP는 "지도 전체의 불확실성"을 줄이지만, 우리는 <b>수거계획이 바뀌는 불확실성</b>만 줄인다. 2 kg짜리가 1 kg인지 3 kg인지는 안 가고, 20 kg짜리가 23 kg을 넘는지는 간다.</div>
+      </div>
+
+      <div class="card">
+        <div><h4>집적 예측 · 어느 해안부터 날릴까</h4><p class="what">조류·바람·하천 유입을 넣은 라그랑주 입자추적으로 좌초 밀도가 높은 해안을 순위화한다. 인천·강화 200 m 격자, 15,000 입자, 30일.</p></div>
+        <div class="refs">
+          <div class="ref"><b>라그랑주 입자추적 범용 프레임워크 (OpenDrift)</b><span class="cite">Dagestad, Röhrs, Breivik &amp; Ådlandsvik (2018) Geoscientific Model Development 11:1405–1420</span></div>
+          <div class="ref"><b>좌초·재부유 매개변수화: 부유 플라스틱은 연안에 갇힌다</b><span class="cite">Onink, Jongedijk, Hoffman, van Sebille &amp; Laufkötter (2021) Environmental Research Letters 16:064053</span></div>
+        </div>
+        <div class="ours"><b>우리가 더한 것</b> · 섬 단위(교동도·서검도) 상대 기준 집적 구간과 8방위 이름 붙이기. 실측 해류로 교체 가능한 인터페이스. <span class="pill plan">실측 검증 전</span></div>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:28px"><b>한 줄.</b> 방법은 검증된 것. 우리 기여는 수거계획을 바꾸는 불확실성만 줄이는 재방문 규칙이다.</div>
+  </div>
+</section>
+
+<!-- ───────────── 3. 검증 ───────────── -->
+<section class="ch" id="validation">
+  <div class="wrap">
+    <div class="ch-head">
+      <div class="no">03</div>
+      <h2>검증: 가설 · 설계 · 결과</h2>
+      <p class="sub">세 실험은 각각 파이프라인의 한 가정을 깬다. 결과가 없는 항목은 "진행 중"으로 두었고, 가정은 가정이라고 썼다.</p>
+    </div>
+
+    <!-- 실험 A -->
+    <div class="block exp">
+      <div class="exp-head"><span class="id">EXP-A</span><h3>비행 패턴이 부피 복원을 가르는가</h3><span class="pill done">완료</span></div>
+      <div class="meta">
+        <div class="card"><h5>가설</h5><p>물체를 여러 각도에서 보는 선회 비행은 SfM 부피를 복원하고, 한 방향으로 지나가는 경사 통과 비행은 복원에 실패한다.</p></div>
+        <div class="card"><h5>설계</h5><p>같은 물체군을 선회(비행 0007)와 경사 통과(비행 0015)로 촬영. 각 영상에서 SfM 3D 복원 후 물체 부피를 실측과 비교.</p></div>
+        <div class="card"><h5>결과</h5><p>선회: 물체별 부피 오차 −3%, +19%. 경사 통과: 3D 복원 실패(부피 산출 불가). 선회를 기본 비행 패턴으로 고정.</p></div>
+      </div>
+      <div class="result">
+        <div class="card chart" id="c-expa">
+          <div class="head"><div><div class="title">SfM 부피 오차 (실측 대비)</div><div class="desc">선회 0007 물체별 · 경사 통과 0015는 복원 실패</div></div><button class="btn" data-table="t-expa" type="button">표로 보기</button></div>
+          <div class="viz"></div>
+          <table class="tbl" id="t-expa" hidden><thead><tr><th>비행</th><th>물체</th><th class="n">부피 오차</th></tr></thead><tbody><tr><td>선회 0007</td><td>물체 1</td><td class="n">−3%</td></tr><tr><td>선회 0007</td><td>물체 2</td><td class="n">+19%</td></tr><tr><td>경사 통과 0015</td><td>—</td><td class="n">복원 실패</td></tr></tbody></table>
+        </div>
+        <div class="slot"><b>자료 대기 · 결과자료 폴더에서 채움</b><span>0007 선회 원본 사진, 복원 3D 스크린샷(PLY), 0015 실패 화면, 물체별 부피 비교 표</span></div>
+      </div>
+    </div>
+
+    <!-- 실험 B -->
+    <div class="block exp">
+      <div class="exp-head"><span class="id">EXP-B</span><h3>3D 복원 좌표는 GPS와 얼마나 맞는가</h3><span class="pill done">완료</span></div>
+      <div class="meta">
+        <div class="card"><h5>가설</h5><p>SfM 카메라 자세를 드론 GPS(SRT)에 정합하면 복원 좌표와 GPS의 잔차가 수 m 이내로 들어오고, 삼각측량 위치는 고도 입력 오류에 영향을 받지 않는다.</p></div>
+        <div class="card"><h5>설계</h5><p>(1) ㅁ자 건물 주변 실기체 비행: SfM 카메라 위치 ↔ SRT GPS 잔차. (2) 정답을 아는 합성 7개 시나리오로 삼각측량 vs 기존 평면 교차 비교(픽셀 잡음 1σ 2–3 px).</p></div>
+        <div class="card"><h5>결과</h5><p>실기체 잔차 1.16 m. 합성: 높이를 3.7 m로 잘못 넣고 실제 20 m일 때 삼각측량 오차 0.02 m, 기존 방식은 물체를 0개 묶음. GPS 1σ 2.5 m 가정 시 r95 = 5.2 m.</p></div>
+      </div>
+      <div class="result">
+        <div class="card">
+          <div class="chart"><div class="head"><div><div class="title">합성 시나리오 7개 (tests/test_triangulate.py)</div><div class="desc">정답 위치 대비 최대 오차</div></div></div></div>
+          <div class="tblwrap"><table class="tbl"><thead><tr><th>시나리오</th><th class="n">삼각측량</th><th class="n">기존 평면 교차</th></tr></thead><tbody>
+            <tr><td>직진, 입력 높이 3.7 m / 실제 20 m</td><td class="n">0.02 m</td><td class="n">묶기 실패 (0개)</td></tr>
+            <tr><td>일렬 물체 3개, 입력 8 m / 실제 20 m</td><td class="n">0.01–0.02 m</td><td class="n">—</td></tr>
+            <tr><td>제자리 호버링 (시차 0.5°)</td><td class="n">0.02 m*</td><td class="n">0.02 m</td></tr>
+            <tr><td>이상치 광선 1개 포함</td><td class="n">0.11 m</td><td class="n">—</td></tr>
+            <tr><td>짐벌 −60° 선회 (반경 6 m)</td><td class="n">0.01 m</td><td class="n">—</td></tr>
+            <tr><td>높이가 맞을 때</td><td class="n">0.02 m</td><td class="n">0.03 m</td></tr>
+            <tr><td>몬테카를로 r95 (GPS 1σ 2.5 m)</td><td class="n">5.2 m</td><td class="n">—</td></tr>
+          </tbody></table></div>
+          <p class="muted" style="font-size:12.5px;margin-top:8px">* 시차 부족으로 자동 평면 교차 복귀. 절대 위치의 바닥은 여전히 드론 GPS이며, 1 m 아래로 가려면 RTK 또는 기준 표식이 필요하다.</p>
+        </div>
+        <div style="display:grid;gap:12px">
+          <div class="card tile"><div class="label">ㅁ자 건물 실기체 · 3D ↔ GPS 잔차</div><div class="value">1.16<small>m</small></div><div class="note">1장의 50 m 오차와 같은 종류의 입력(SRT 고도)으로 얻은 값. 고도·평지 가정이 빠지자 오차는 GPS 자체 수준으로 내려왔다.</div></div>
+          <div class="slot"><b>자료 대기</b><span>ㅁ자 건물 비행 경로(KMZ/로그), 잔차 계산 결과, 카메라 위치 vs GPS 겹친 그림</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 실험 C -->
+    <div class="block exp">
+      <div class="exp-head"><span class="id">EXP-C</span><h3>재방문이 재현율을 얼마나 올리는가</h3><span class="pill done">완료 (시뮬레이션)</span></div>
+      <div class="meta">
+        <div class="card"><h5>가설</h5><p>커버리지 비행만으로는 놓치는 물체가 있고, 불확실한 물체만 골라 재방문하면 비행거리를 조금 늘려 재현율을 크게 올린다.</p></div>
+        <div class="card"><h5>설계</h5><p>정사영상 기반 시뮬레이터(sim_ortho)에 같은 구간·같은 물체를 두고, (a) 커버리지 비행만, (b) 커버리지 + 재방문 두 조건으로 탐지 재현율과 총 비행거리를 비교.</p></div>
+        <div class="card"><h5>결과</h5><p>재현율 0.71 → 0.86 (+0.15). 비행거리 +697 m. 재방문 대상 선택 규칙(고정 임계 vs 경계 기반)의 비교는 아직 결과 없음.</p></div>
+      </div>
+      <div class="result">
+        <div class="card chart" id="c-expc">
+          <div class="head"><div><div class="title">탐지 재현율</div><div class="desc">sim_ortho · 같은 구간, 두 비행 조건</div></div><button class="btn" data-table="t-expc" type="button">표로 보기</button></div>
+          <div class="viz"></div>
+          <table class="tbl" id="t-expc" hidden><thead><tr><th>조건</th><th class="n">재현율</th><th class="n">비행거리 증가</th></tr></thead><tbody><tr><td>커버리지만</td><td class="n">0.71</td><td class="n">0 m</td></tr><tr><td>커버리지 + 재방문</td><td class="n">0.86</td><td class="n">+697 m</td></tr></tbody></table>
+        </div>
+        <div style="display:grid;gap:12px">
+          <div class="card tile"><div class="label">재방문으로 늘어난 비행거리</div><div class="value">+697<small>m</small></div><div class="note">재현율 15%p를 사는 값. 한 구간 커버리지 비행 한 번과 비교해 표시하려면 기준 거리가 필요하다(자료 대기).</div></div>
+          <div class="slot"><b>자료 대기</b><span>sim_ortho 로그(기준 비행거리 포함), 두 조건 비행경로 그림</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 보조 실험 D -->
+    <div class="block exp">
+      <div class="exp-head"><span class="id">SUP-D</span><h3>보조: 실제 지형 위 비행 시뮬레이션</h3><span class="pill done">완료</span></div>
+      <div class="result">
+        <div class="card">
+          <p class="fg2" style="font-size:14px">실제 고도 자료(DEM) 위에 Crazyflie 2.x 모델과 PID 제어기를 올린 PyBullet 시뮬레이션. 섬 지형에서 커버리지·선회 경로를 추종할 때 고도 유지와 경로 오차를 확인했다.</p>
+          <div class="tblwrap" style="margin-top:12px"><table class="tbl"><thead><tr><th></th><th class="n">월미도</th><th class="n">강화도(마니산)</th></tr></thead><tbody>
+            <tr><td>DEM</td><td class="n">3.8 m/px · 2.9 km²</td><td class="n">30 m/px · 23 km²</td></tr>
+            <tr><td>경로</td><td class="n">반경 500 m 선회 · 3.2 km</td><td class="n">반경 1,500 m 선회 · 9.6 km</td></tr>
+            <tr><td>순항 속도</td><td class="n">10.0 m/s</td><td class="n">10.0 m/s</td></tr>
+            <tr><td>순항 지상고 (목표 60 / 80 m)</td><td class="n">55–68 m</td><td class="n">46–104 m</td></tr>
+            <tr><td>경로 추종 오차 최대</td><td class="n">2.8 m</td><td class="n">2.4 m</td></tr>
+            <tr><td>heightfield vs DEM 오차</td><td class="n">0.00 m</td><td class="n">0.00 m</td></tr>
+          </tbody></table></div>
+        </div>
+        <div style="display:grid;gap:12px">
+          <figure><video src="assets/wolmido_flight.mp4" muted loop playsinline controls preload="metadata" poster="assets/wolmido_map.jpg"></video><figcaption>월미도 선회 비행 (시뮬레이션 339 s). 고도 색상은 DEM.</figcaption></figure>
+        </div>
+      </div>
+    </div>
+
+    <!-- 보조 실험 E -->
+    <div class="block exp">
+      <div class="exp-head"><span class="id">SUP-E</span><h3>보조: 어느 해안에 쌓이는가 (조류 입자추적)</h3><span class="pill plan">모식 조류 · 실측 검증 전</span></div>
+      <div class="result">
+        <div class="card chart" id="c-hot">
+          <div class="head"><div><div class="title">집적 예상 해안 상위 5 구간 · 인천·강화</div><div class="desc">해안 1 km당 좌초 입자 밀도 점수 (30일 여름 장마 시나리오)</div></div><button class="btn" data-table="t-hot" type="button">표로 보기</button></div>
+          <div class="viz"></div>
+          <table class="tbl" id="t-hot" hidden><thead><tr><th>구간</th><th class="n">길이 (km)</th><th class="n">점수</th></tr></thead><tbody><tr><td>김포 서안(한강하구)</td><td class="n">10.6</td><td class="n">162.7</td></tr><tr><td>강화 북안(조강 연안)</td><td class="n">17.1</td><td class="n">150.4</td></tr><tr><td>소래·시흥 연안</td><td class="n">21.9</td><td class="n">118.6</td></tr><tr><td>강화 동안(염하수로)</td><td class="n">22.8</td><td class="n">115.8</td></tr><tr><td>인천 북항·연안부두</td><td class="n">11.1</td><td class="n">107.3</td></tr></tbody></table>
+          <div class="chart" id="c-gyo" style="margin-top:22px">
+            <div class="head"><div><div class="title">교동도 섬 단위 · 8방위 구간</div><div class="desc">섬 해안선 기준 상위 30% (100 m 격자, 200,000 입자)</div></div></div>
+            <div class="viz"></div>
+          </div>
+        </div>
+        <div style="display:grid;gap:12px">
+          <figure><img src="assets/hotspot_map_gyodong.jpg" alt="교동도 집적 예상 지도: 서안·북서안에 빨간 반투명 라인" loading="lazy"><figcaption>교동도 집적 예상 구간. 서안·북서안이 상위. 배경은 GSHHG 해안선 모식도.</figcaption></figure>
+          <figure><img src="assets/hotspot_map.jpg" alt="인천·강화 집적 예상 지도" loading="lazy"><figcaption>인천·강화 전역. 조류는 조석 연속방정식 모델(M2+S2)이며 실측 해류(KHOA·KOOS·CMEMS)로 교체 가능.</figcaption></figure>
+        </div>
+      </div>
+    </div>
+
+    <!-- 진행 중 -->
+    <div class="block">
+      <h3>아직 결과가 없는 것</h3>
+      <div class="grid g3" style="margin-top:12px">
+        <div class="card"><span class="pill run">진행 중</span><h4 style="font-size:15px;font-weight:600;margin-top:10px">재방문 규칙 비교</h4><p class="fg2" style="font-size:14px;margin-top:6px">"구간 폭이 큰 순"(고정 임계) vs "23 kg·마대·트럭 경계에 걸린 순"(경계 기반). 같은 비행거리에서 어느 쪽이 수거계획 오차를 더 줄이는지.</p></div>
+        <div class="card"><span class="pill plan">가정</span><h4 style="font-size:15px;font-weight:600;margin-top:10px">위성 우선순위 곡선</h4><p class="fg2" style="font-size:14px;margin-top:6px">위성 영상·집적 모델로 매긴 구간 우선순위가 실제 드론 탐지량과 얼마나 상관되는지. 곡선은 아직 없고, 1차는 집적 순위를 그대로 쓴다.</p></div>
+        <div class="card"><span class="pill run">진행 중</span><h4 style="font-size:15px;font-weight:600;margin-top:10px">예측구간 보정</h4><p class="fg2" style="font-size:14px;margin-top:6px">문갑도 42개의 부피·실측 무게 쌍으로 종류별 겉보기밀도 분포와 conformal 보정 집합을 만든다. 포함확률 90% 목표.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── 4. 제품 ───────────── -->
+<section class="ch" id="product">
+  <div class="wrap">
+    <div class="ch-head">
+      <div class="no">04</div>
+      <h2>제품: 수거계획 대시보드</h2>
+      <p class="sub">비행 영상과 SRT를 넣으면 나오는 화면. 구간 우선순위, 물체별 무게 구간, 2차 비행 후보, 그리고 마대·트럭·인원. 아래 수치는 <b>예시 데이터</b>이며 문갑도 42개 라벨을 넣으면 같은 화면이 실제 값으로 바뀐다.</p>
+    </div>
+
+    <div class="dash" id="dash">
+      <div class="bar" role="group" aria-label="설정">
+        <label class="f">섬 / 비행<select id="f-site"><option>문갑도 · 예시 데이터</option></select></label>
+        <label class="f">1인 운반 한계 (kg)<input id="f-carry" type="number" value="23" min="5" step="1"></label>
+        <label class="f">마대 1장 용량 (kg)<input id="f-bag" type="number" value="20" min="5" step="1"></label>
+        <label class="f">트럭 1대 적재 (kg)<input id="f-truck" type="number" value="1000" min="100" step="50"></label>
+        <label class="f">1인 하루 마대 수<input id="f-pp" type="number" value="8" min="1" step="1"></label>
+        <span class="spacer"></span>
+        <span class="pill wait">예시 데이터 · 라벨 입력 전</span>
+      </div>
+
+      <div class="kpis">
+        <div class="card kpi"><div class="label">탐지 물체</div><div class="value" id="k-n">—</div><div class="range" id="k-n-r"></div></div>
+        <div class="card kpi"><div class="label">총 무게 (예측구간)</div><div class="value" id="k-w">—</div><div class="range" id="k-w-r"></div></div>
+        <div class="card kpi"><div class="label">2차 비행 후보</div><div class="value" id="k-c">—</div><div class="range" id="k-c-r"></div></div>
+        <div class="card kpi"><div class="label">2차 비행 후 확정되는 것</div><div class="value" id="k-fix" style="font-size:16px;line-height:1.35;font-weight:500"></div></div>
+      </div>
+
+      <div class="grid g2" style="margin-top:12px;align-items:start">
+        <div class="card">
+          <h4>구간 우선순위 <span class="muted" style="font-weight:400;font-size:12px">집적 예측 × 1차 비행 탐지량</span></h4>
+          <div class="seg" id="segs" aria-label="해안 구간 우선순위"></div>
+          <p class="note">A→F는 해안을 따라 서→동. 색이 진할수록 먼저 수거. 실제 지도는 문갑도 라벨(GeoJSON) 입력 후 좌표로 그린다.</p>
+        </div>
+        <div class="card">
+          <h4>2차 비행 후보 <span class="muted" style="font-weight:400;font-size:12px">구간이 경계에 걸린 물체만</span></h4>
+          <ul class="cands" id="cands"></ul>
+          <p class="note">규칙: 무게 구간이 1인 운반 한계를 가로지르거나, 구간 합계의 마대 수가 하한·상한에서 달라지는 물체. 그 외는 구간이 넓어도 다시 가지 않는다.</p>
+        </div>
+      </div>
+
+      <div class="card chart" id="c-range" style="margin-top:12px">
+        <div class="head"><div><div class="title">물체별 무게 예측구간</div><div class="desc">하한–상한 (kg). 주황 = 2차 비행 후보. 세로선 = 1인 운반 한계.</div></div><button class="btn" data-table="t-range" type="button">표로 보기</button></div>
+        <div class="viz"></div>
+        <div class="legend"><span><i style="background:var(--s1)"></i>확정 (구간이 경계를 안 넘음)</span><span><i style="background:var(--s2)"></i>2차 비행 후보</span></div>
+        <div class="tblwrap"><table class="tbl" id="t-range" hidden><thead><tr><th>ID</th><th>구간</th><th>종류</th><th class="n">부피 (L)</th><th class="n">하한 (kg)</th><th class="n">상한 (kg)</th><th>판정</th></tr></thead><tbody></tbody></table></div>
+      </div>
+
+      <div class="out" style="margin-top:12px">
+        <div class="card"><div class="label fg2" style="font-size:12.5px">마대</div><div class="value" id="o-bag">—</div><div class="rule" id="o-bag-r"></div></div>
+        <div class="card"><div class="label fg2" style="font-size:12.5px">트럭</div><div class="value" id="o-truck">—</div><div class="rule" id="o-truck-r"></div></div>
+        <div class="card"><div class="label fg2" style="font-size:12.5px">인원 (1일 기준)</div><div class="value" id="o-pp">—</div><div class="rule" id="o-pp-r"></div></div>
+      </div>
+      <p class="note">산출 규칙: 마대 = ⌈총 무게 ÷ 마대 용량⌉, 트럭 = ⌈총 무게 ÷ 적재량⌉, 인원 = ⌈마대 ÷ 1인 하루 마대 수⌉. 각각 하한과 상한으로 두 번 계산해 "확정"인지 "2차 비행 필요"인지 보여준다.</p>
+    </div>
+
+    <div class="block">
+      <h3>누가 무엇을 받는가</h3>
+      <div class="grid g3" style="margin-top:12px">
+        <div class="card"><div class="eyebrow">입력</div><p class="fg2" style="font-size:14px;margin-top:8px">드론 비행 영상(MP4) + 자막 로그(SRT). 선회 비행 1회, 고도 20–40 m, 짐벌 −90°. 특별한 장비 없이 DJI 기본 기체.</p></div>
+        <div class="card"><div class="eyebrow">출력</div><p class="fg2" style="font-size:14px;margin-top:8px">구간 우선순위 지도(GeoJSON), 물체 목록(위치·오차반경·무게 구간 CSV), 마대·트럭·인원 산출표, 2차 비행 경로(KMZ).</p></div>
+        <div class="card"><div class="eyebrow">사용자</div><p class="fg2" style="font-size:14px;margin-top:8px">시군 해양수산 부서(예산·배차), 수거 용역업체(동선·인원), 해양환경공단 모니터링(반복 조사). 비행 1회가 수거계획서 1부가 된다.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── 부록 ───────────── -->
+<section class="ch" id="appendix">
+  <div class="wrap">
+    <div class="ch-head">
+      <div class="no">+</div>
+      <h2>부록</h2>
+    </div>
+
+    <div class="block">
+      <h3>자료 상태</h3>
+      <p class="prose" style="margin-bottom:12px">이 페이지에 들어간 숫자와 그림의 출처. "대기"는 결과자료 폴더(드론대장붕붕이_결과자료_20261002)에서 받아 채울 항목.</p>
+      <div class="tblwrap"><table class="tbl status-tbl"><thead><tr><th>항목</th><th>상태</th><th>비고</th></tr></thead><tbody>
+        <tr><td>문갑도 42개 무게 비교 (1.3 kg vs 101 kg)</td><td><span class="pill done">반영</span></td><td>합계값만. 물체별 라벨 CSV/GeoJSON 대기 → 4장 대시보드 실제 값으로 교체</td></tr>
+        <tr><td>EXP-A 0007/0015 부피 오차</td><td><span class="pill done">반영</span></td><td>사진·3D 스크린샷·비교표 대기</td></tr>
+        <tr><td>EXP-B 실기체 잔차 1.16 m</td><td><span class="pill done">반영</span></td><td>경로 KMZ·잔차 계산 결과 대기. 합성 7개 시나리오는 저장소 docs/삼각측량_위치보정.md</td></tr>
+        <tr><td>EXP-C sim_ortho 재현율·거리</td><td><span class="pill done">반영</span></td><td>로그·경로 그림 대기 (기준 비행거리 포함)</td></tr>
+        <tr><td>SUP-D 지형 비행 시뮬레이션</td><td><span class="pill done">반영</span></td><td>저장소 island_drone_sim (월미도·강화)</td></tr>
+        <tr><td>SUP-E 집적 예측</td><td><span class="pill done">반영</span></td><td>저장소 incheon_debris_sim 결과. 모식 조류, 실측 검증 전</td></tr>
+        <tr><td>거제·전남 비용 수치</td><td><span class="pill run">원문 확인 중</span></td><td>팀 조사 자료. 공개 보도는 50만 원/t, 국비·지방비 50:50</td></tr>
+        <tr><td>현장 사진</td><td><span class="pill wait">대기</span></td><td>히어로·1장에 1~2장</td></tr>
+      </tbody></table></div>
+    </div>
+
+    <div class="block">
+      <h3>참고문헌</h3>
+      <ol class="refs-list" style="margin-top:12px">
+        <li><b>Martin C., Parkes S., Zhang Q., Zhang X., McCabe M.F., Duarte C.M.</b> (2018). Use of unmanned aerial vehicles for efficient beach litter monitoring. <i>Marine Pollution Bulletin</i> 131(A):662–673.</li>
+        <li><b>Fallati L., Polidori A., Salvatore C., Saponari L., Savini A., Galli P.</b> (2019). Anthropogenic Marine Debris assessment with Unmanned Aerial Vehicle imagery and deep learning: A case study along the beaches of the Republic of Maldives. <i>Science of the Total Environment</i> 693:133581.</li>
+        <li><b>Hartley R.I., Sturm P.</b> (1997). Triangulation. <i>Computer Vision and Image Understanding</i> 68(2):146–157.</li>
+        <li><b>Westoby M.J., Brasington J., Glasser N.F., Hambrey M.J., Reynolds J.M.</b> (2012). 'Structure-from-Motion' photogrammetry: A low-cost, effective tool for geoscience applications. <i>Geomorphology</i> 179:300–314.</li>
+        <li><b>Kako S., Morita S., Taneda T.</b> (2020). Estimation of plastic marine debris volumes on beaches using unmanned aerial vehicles and image processing based on deep learning. <i>Marine Pollution Bulletin</i> 155:111127.</li>
+        <li><b>Andriolo U. et al.</b> (2024). Marine litter weight estimation from UAV imagery: Three potential methodologies to advance macrolitter reports. <i>Marine Pollution Bulletin</i> 202:116405.</li>
+        <li><b>Angelopoulos A.N., Bates S.</b> (2023). Conformal Prediction: A Gentle Introduction. <i>Foundations and Trends in Machine Learning</i> 16(4):494–591.</li>
+        <li><b>Galceran E., Carreras M.</b> (2013). A survey on coverage path planning for robotics. <i>Robotics and Autonomous Systems</i> 61(12):1258–1276.</li>
+        <li><b>Popović M., Vidal-Calleja T., Hitz G., Chung J.J., Sa I., Siegwart R., Nieto J.</b> (2020). An informative path planning framework for UAV-based terrain monitoring. <i>Autonomous Robots</i> 44:889–911.</li>
+        <li><b>Merlino S., Paterni M., Berton A., Massetti L.</b> (2020). Unmanned Aerial Vehicles for Debris Survey in Coastal Areas: Long-Term Monitoring Programme to Study Spatial and Temporal Accumulation of the Dynamics of Beached Marine Litter. <i>Remote Sensing</i> 12(8):1260.</li>
+        <li><b>Dagestad K.-F., Röhrs J., Breivik Ø., Ådlandsvik B.</b> (2018). OpenDrift v1.0: a generic framework for trajectory modelling. <i>Geoscientific Model Development</i> 11:1405–1420.</li>
+        <li><b>Onink V., Jongedijk C.E., Hoffman M.J., van Sebille E., Laufkötter C.</b> (2021). Global simulations of marine plastic transport show plastic trapping in coastal zones. <i>Environmental Research Letters</i> 16:064053.</li>
+      </ol>
+    </div>
+
+    <footer>드론대장 붕붕이 · 저장소 HSR2M/hsr1m (island_drone_sim, 삼각측량 패치, incheon_debris_sim) · 이 페이지의 모든 차트는 표로도 볼 수 있다.</footer>
+  </div>
+</section>
+
+<div class="tip" id="tip" hidden></div>
+
+<script>
+(function(){
+  var S = getComputedStyle(document.documentElement);
+  function v(n){ return S.getPropertyValue(n).trim(); }
+  var tip = document.getElementById('tip');
+  function showTip(html, x, y){ tip.innerHTML = html; tip.hidden = false; var w = tip.offsetWidth, h = tip.offsetHeight; var left = Math.min(x + 14, window.innerWidth - w - 8), top = y - h - 12; if (top < 8) top = y + 16; tip.style.left = left + 'px'; tip.style.top = top + 'px'; }
+  function hideTip(){ tip.hidden = true; }
+  function bindTip(el, html){
+    el.setAttribute('tabindex','0'); el.classList.add('mark');
+    el.addEventListener('mousemove', function(e){ showTip(html, e.clientX, e.clientY); });
+    el.addEventListener('mouseleave', hideTip);
+    el.addEventListener('focus', function(){ var r = el.getBoundingClientRect(); showTip(html, r.left + r.width/2, r.top); });
+    el.addEventListener('blur', hideTip);
+  }
+  var NS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs, parent){ var e = document.createElementNS(NS, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+  function fmt(n, d){ return n.toLocaleString('ko-KR', {maximumFractionDigits: d == null ? 1 : d}); }
+  function barPath(x0, y, w, h, dir){ // 4px 둥근 끝은 데이터 쪽만, 기준선 쪽은 직각
+    var r = Math.min(4, Math.abs(w)/2, h/2);
+    if (dir >= 0) return 'M'+x0+','+y+' h'+(w-r)+' a'+r+','+r+' 0 0 1 '+r+','+r+' v'+(h-2*r)+' a'+r+','+r+' 0 0 1 -'+r+','+r+' h-'+(w-r)+' z';
+    return 'M'+x0+','+y+' h-'+(w-r)+' a'+r+','+r+' 0 0 0 -'+r+','+r+' v'+(h-2*r)+' a'+r+','+r+' 0 0 0 '+r+','+r+' h'+(w-r)+' z';
+  }
+  // 가로 막대: rows = [{label, value, color?, note?, text?}], opts = {max, min, unit, fmtv, labelW}
+  function hbar(container, rows, opts){
+    var W = 560, labelW = opts.labelW || 150, rowH = 34, barH = 20, padR = 70;
+    var H = rows.length * rowH + 28;
+    var svg = el('svg', {viewBox: '0 0 '+W+' '+H, role: 'img', 'aria-label': opts.aria || ''}, container);
+    var min = opts.min != null ? opts.min : 0, max = opts.max;
+    var x0 = labelW, x1 = W - padR;
+    function sx(val){ return x0 + (val - min) / (max - min) * (x1 - x0); }
+    // 눈금
+    var ticks = opts.ticks || [min, max];
+    ticks.forEach(function(t){ var x = sx(t); el('line', {x1:x, x2:x, y1:0, y2:H-24, 'class': t===0 ? 'base':'grid'}, svg); var tx = el('text', {x:x, y:H-8, 'text-anchor':'middle', 'class':'axis'}, svg); tx.textContent = (opts.fmtv||fmt)(t) + (opts.unit ? ' '+opts.unit : ''); });
+    rows.forEach(function(r, i){
+      var y = i * rowH + 4;
+      var lt = el('text', {x: labelW - 10, y: y + barH/2 + 4, 'text-anchor':'end'}, svg); lt.textContent = r.label;
+      if (r.value == null){ var nt = el('text', {x: sx(Math.max(min,0)) + 8, y: y + barH/2 + 4}, svg); nt.textContent = r.text || '—'; nt.setAttribute('fill', v('--muted')); return; }
+      var dir = r.value >= 0 ? 1 : -1, bx = sx(Math.max(min,0)), bw = Math.abs(sx(r.value) - bx);
+      var g = el('g', {}, svg);
+      var p = el('path', {d: barPath(bx, y, bw, barH, dir), fill: r.color || v('--s1')}, g);
+      var vt = el('text', {x: dir>0 ? sx(r.value) + 8 : sx(r.value) - 8, y: y + barH/2 + 4, 'text-anchor': dir>0 ? 'start':'end'}, g); vt.textContent = r.text || ((opts.fmtv||fmt)(r.value) + (opts.unit ? ' '+opts.unit : ''));
+      var hit = el('rect', {x: Math.min(bx, sx(r.value)) - 6, y: y - 7, width: bw + 12, height: barH + 14, fill: 'transparent'}, g);
+      bindTip(g, '<b>'+r.label+'</b><br>'+(r.text || ((opts.fmtv||fmt)(r.value)+(opts.unit?' '+opts.unit:'')))+(r.note ? '<br><span style="opacity:.75">'+r.note+'</span>' : ''));
+    });
+  }
+
+  // 1장: 무게 비교
+  hbar(document.querySelector('#c-weight .viz'), [
+    {label:'업체 품목 계수', value:1.3, color:v('--neutral-mark'), note:'품목 수 × 평균 무게'},
+    {label:'부피 × 겉보기밀도', value:101, note:'드론 SfM 3D 부피 기준'}
+  ], {max:120, ticks:[0,50,100], unit:'kg', labelW:130, aria:'문갑도 42개 물체 무게 두 가지 추정 비교'});
+
+  // 3장 A
+  hbar(document.querySelector('#c-expa .viz'), [
+    {label:'선회 0007 · 물체 1', value:-3, text:'−3%'},
+    {label:'선회 0007 · 물체 2', value:19, text:'+19%'},
+    {label:'경사 통과 0015', value:null, text:'3D 복원 실패'}
+  ], {min:-30, max:30, ticks:[-30,-15,0,15,30], unit:'%', labelW:150, fmtv:function(n){return (n>0?'+':'')+n;}, aria:'SfM 부피 오차'});
+
+  // 3장 C
+  hbar(document.querySelector('#c-expc .viz'), [
+    {label:'커버리지만', value:0.71, color:v('--neutral-mark'), text:'0.71'},
+    {label:'커버리지 + 재방문', value:0.86, text:'0.86', note:'비행거리 +697 m'}
+  ], {max:1, ticks:[0,0.5,1], labelW:140, fmtv:function(n){return n.toFixed(1);}, aria:'탐지 재현율 비교'});
+
+  // 3장 E
+  hbar(document.querySelector('#c-hot .viz'), [
+    {label:'김포 서안(한강하구)', value:162.7, note:'10.6 km'},
+    {label:'강화 북안(조강 연안)', value:150.4, note:'17.1 km'},
+    {label:'소래·시흥 연안', value:118.6, note:'21.9 km'},
+    {label:'강화 동안(염하수로)', value:115.8, note:'22.8 km'},
+    {label:'인천 북항·연안부두', value:107.3, note:'11.1 km'}
+  ], {max:180, ticks:[0,60,120,180], labelW:160, fmtv:function(n){return fmt(n,0);}, aria:'집적 예상 해안 상위 5'});
+  hbar(document.querySelector('#c-gyo .viz'), [
+    {label:'교동도 서안', value:28.6, note:'2.7 km'},
+    {label:'교동도 북서안', value:24.5, note:'2.6 km'},
+    {label:'교동도 북안', value:8.7, note:'1.1 km'},
+    {label:'교동도 북동안', value:5.4, note:'0.8 km'}
+  ], {max:30, ticks:[0,10,20,30], labelW:160, fmtv:function(n){return fmt(n,0);}, aria:'교동도 집적 구간'});
+
+  // 표 토글
+  document.querySelectorAll('[data-table]').forEach(function(b){
+    b.addEventListener('click', function(){ var t = document.getElementById(b.getAttribute('data-table')); t.hidden = !t.hidden; b.textContent = t.hidden ? '표로 보기' : '표 닫기'; });
+  });
+
+  // 내비 현재 위치
+  var links = document.querySelectorAll('.nav a');
+  var secs = Array.prototype.map.call(links, function(a){ return document.querySelector(a.getAttribute('href')); });
+  if ('IntersectionObserver' in window){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ if (en.isIntersecting){ links.forEach(function(a){ a.removeAttribute('aria-current'); }); var i = secs.indexOf(en.target); if (i >= 0) links[i].setAttribute('aria-current','true'); } });
+    }, {rootMargin: '-40% 0px -55% 0px'});
+    secs.forEach(function(s){ if (s) io.observe(s); });
+  }
+
+  /* ───── 4장 대시보드 (예시 데이터) ───── */
+  // 예시: 문갑도 라벨 CSV가 오면 이 배열을 실제 값으로 교체한다. lo/hi = 무게 예측구간 (kg)
+  var OBJ = [
+    {id:'D-01', seg:'A', type:'스티로폼 부표', vol:120, lo:2.1, hi:4.8},
+    {id:'D-02', seg:'A', type:'폐어망 뭉치', vol:60, lo:9.5, hi:31.0},
+    {id:'D-03', seg:'A', type:'페트병 묶음', vol:8, lo:0.2, hi:0.5},
+    {id:'D-04', seg:'B', type:'밧줄', vol:25, lo:4.0, hi:11.5},
+    {id:'D-05', seg:'B', type:'플라스틱 통', vol:30, lo:1.1, hi:2.6},
+    {id:'D-06', seg:'B', type:'폐어망 (젖음)', vol:140, lo:18.0, hi:52.0},
+    {id:'D-07', seg:'C', type:'스티로폼 상자', vol:45, lo:0.6, hi:1.4},
+    {id:'D-08', seg:'C', type:'폐목재', vol:90, lo:14.0, hi:27.0},
+    {id:'D-09', seg:'C', type:'타이어', vol:50, lo:7.5, hi:9.5},
+    {id:'D-10', seg:'D', type:'통발', vol:35, lo:3.5, hi:6.0},
+    {id:'D-11', seg:'D', type:'스티로폼 부표(대)', vol:300, lo:4.5, hi:9.0},
+    {id:'D-12', seg:'D', type:'혼합 뭉치', vol:70, lo:6.0, hi:20.0}
+  ];
+  var SEGS = ['A','B','C','D','E','F'];
+  var PRIOR = {A:0.9, B:0.8, C:0.55, D:0.5, E:0.2, F:0.1}; // 집적 예측 × 탐지량 (예시)
+  var $ = function(id){ return document.getElementById(id); };
+  function num(id, d){ var n = parseFloat($(id).value); return isNaN(n) || n <= 0 ? d : n; }
+  function ceil(a,b){ return Math.ceil(a / b - 1e-9); }
+
+  function compute(){
+    var carry = num('f-carry', 23), bag = num('f-bag', 20), truck = num('f-truck', 1000), pp = num('f-pp', 8);
+    var lo = 0, hi = 0; OBJ.forEach(function(o){ lo += o.lo; hi += o.hi; });
+    // 구간별 마대 수가 하한/상한에서 달라지는지
+    var segBag = {};
+    SEGS.forEach(function(s){ var l=0,h=0; OBJ.forEach(function(o){ if(o.seg===s){ l+=o.lo; h+=o.hi; } }); segBag[s] = {lo:l, hi:h, bl:ceil(l,bag), bh:ceil(h,bag)}; });
+    OBJ.forEach(function(o){
+      o.why = [];
+      if (o.lo < carry && o.hi >= carry) o.why.push('1인 운반 한계 '+carry+' kg 가로지름');
+      var sb = segBag[o.seg];
+      if (sb.bl !== sb.bh && (o.hi - o.lo) >= 0.5 * bag) o.why.push('구간 '+o.seg+' 마대 '+sb.bl+'→'+sb.bh+'장, 폭이 큰 물체');
+      o.cand = o.why.length > 0;
+    });
+    var cands = OBJ.filter(function(o){ return o.cand; });
+    var bagL = ceil(lo,bag), bagH = ceil(hi,bag), trL = ceil(lo,truck), trH = ceil(hi,truck), ppL = ceil(bagL,pp), ppH = ceil(bagH,pp);
+    // KPI
+    $('k-n').innerHTML = OBJ.length + '<small>개</small>'; $('k-n-r').textContent = SEGS.filter(function(s){return segBag[s].hi>0;}).length + '개 구간';
+    $('k-w').innerHTML = fmt(lo,0) + '–' + fmt(hi,0) + '<small>kg</small>'; $('k-w-r').textContent = '중앙 ' + fmt((lo+hi)/2,0) + ' kg · 폭 ' + fmt(hi-lo,0) + ' kg';
+    $('k-c').innerHTML = cands.length + '<small>개</small>'; $('k-c-r').textContent = OBJ.length ? Math.round(cands.length/OBJ.length*100) + '% 물체만 재방문' : '';
+    var fixes = [];
+    if (bagL !== bagH) fixes.push('마대 ' + bagL + '→' + bagH + '장'); else fixes.push('마대 ' + bagL + '장 확정');
+    if (trL !== trH) fixes.push('트럭 ' + trL + '→' + trH + '대'); else fixes.push('트럭 ' + trL + '대 확정');
+    if (ppL !== ppH) fixes.push('인원 ' + ppL + '→' + ppH + '명'); else fixes.push('인원 ' + ppL + '명 확정');
+    $('k-fix').textContent = fixes.join(' · ');
+    // 산출
+    function out(id, l, h, unit, rule){ $(id).innerHTML = (l===h ? l : l+'–'+h) + '<small>'+unit+'</small>'; $(id+'-r').textContent = rule + (l===h ? ' · 확정' : ' · 2차 비행으로 확정'); }
+    out('o-bag', bagL, bagH, '장', '⌈' + fmt(lo,0) + '~' + fmt(hi,0) + ' ÷ ' + bag + '⌉');
+    out('o-truck', trL, trH, '대', '⌈' + fmt(lo,0) + '~' + fmt(hi,0) + ' ÷ ' + fmt(truck,0) + '⌉');
+    out('o-pp', ppL, ppH, '명', '⌈마대 ÷ ' + pp + '⌉');
+    // 구간
+    var sg = $('segs'); sg.innerHTML = '';
+    SEGS.forEach(function(s){ var p = PRIOR[s], d = document.createElement('div'); d.className = p >= 0.75 ? 'lvl3' : p >= 0.4 ? 'lvl2' : 'lvl1'; var sb = segBag[s]; d.innerHTML = '<b>'+s+'</b><small>'+(sb.hi>0 ? fmt(sb.lo,0)+'–'+fmt(sb.hi,0)+' kg' : '미탐지')+'</small>'; d.title = '구간 '+s+' 우선순위 '+p.toFixed(2); sg.appendChild(d); });
+    // 후보 목록
+    var ul = $('cands'); ul.innerHTML = '';
+    if (!cands.length){ var li = document.createElement('li'); li.textContent = '후보 없음: 모든 산출이 하한·상한에서 같다.'; ul.appendChild(li); }
+    cands.sort(function(a,b){ return (b.hi-b.lo)-(a.hi-a.lo); }).forEach(function(o){ var li = document.createElement('li'); li.innerHTML = '<span class="id">'+o.id+' · '+o.seg+'</span><span>'+o.type+'<br><span class="why">'+o.why.join(' · ')+'</span></span><span class="rng">'+o.lo+'–'+o.hi+' kg</span>'; ul.appendChild(li); });
+    // 구간 차트
+    rangeChart(carry);
+    // 표
+    var tb = document.querySelector('#t-range tbody'); tb.innerHTML = '';
+    OBJ.forEach(function(o){ var tr = document.createElement('tr'); tr.innerHTML = '<td class="mono">'+o.id+'</td><td>'+o.seg+'</td><td>'+o.type+'</td><td class="n">'+o.vol+'</td><td class="n">'+o.lo+'</td><td class="n">'+o.hi+'</td><td>'+(o.cand ? '2차 비행 후보' : '확정')+'</td>'; tb.appendChild(tr); });
+  }
+
+  function rangeChart(carry){
+    var c = document.querySelector('#c-range .viz'); c.innerHTML = '';
+    var rows = OBJ.slice().sort(function(a,b){ return b.hi - a.hi; });
+    var W = 760, labelW = 190, rowH = 26, H = rows.length * rowH + 30, padR = 60, x0 = labelW, x1 = W - padR;
+    var max = Math.max(60, Math.ceil(Math.max.apply(null, rows.map(function(o){return o.hi;})) / 10) * 10);
+    var svg = el('svg', {viewBox:'0 0 '+W+' '+H, role:'img', 'aria-label':'물체별 무게 예측구간'}, c);
+    function sx(val){ return x0 + val / max * (x1 - x0); }
+    var ticks = [0, max/4, max/2, max*3/4, max];
+    ticks.forEach(function(t){ var x = sx(t); el('line', {x1:x, x2:x, y1:0, y2:H-24, 'class': t===0?'base':'grid'}, svg); var tx = el('text', {x:x, y:H-8, 'text-anchor':'middle', 'class':'axis'}, svg); tx.textContent = fmt(t,0)+' kg'; });
+    var cx = sx(carry); el('line', {x1:cx, x2:cx, y1:0, y2:H-24, stroke:v('--s2'), 'stroke-width':1.5}, svg);
+    var ct = el('text', {x:cx+5, y:11, 'class':'axis'}, svg); ct.textContent = '1인 '+carry+' kg';
+    rows.forEach(function(o, i){
+      var y = i * rowH + 16, g = el('g', {}, svg), col = o.cand ? v('--s2') : v('--s1');
+      var lt = el('text', {x: labelW - 10, y: y + 4, 'text-anchor':'end'}, g); lt.textContent = o.id + ' ' + o.type;
+      el('line', {x1:sx(o.lo), x2:sx(o.hi), y1:y, y2:y, stroke:col, 'stroke-width':2, 'stroke-linecap':'round'}, g);
+      el('circle', {cx:sx(o.lo), cy:y, r:4, fill:col, stroke:v('--surface'), 'stroke-width':2}, g);
+      el('circle', {cx:sx(o.hi), cy:y, r:4, fill:col, stroke:v('--surface'), 'stroke-width':2}, g);
+      el('rect', {x:sx(o.lo)-10, y:y-12, width:sx(o.hi)-sx(o.lo)+20, height:24, fill:'transparent'}, g);
+      bindTip(g, '<b>'+o.id+' · '+o.type+'</b><br>구간 '+o.seg+' · 부피 '+o.vol+' L<br>'+o.lo+'–'+o.hi+' kg'+(o.cand ? '<br><span style="opacity:.8">'+o.why.join(' · ')+'</span>' : ''));
+    });
+  }
+
+  ['f-carry','f-bag','f-truck','f-pp'].forEach(function(id){ $(id).addEventListener('input', compute); });
+  compute();
+})();
+</script>
+</body>
+</html>
