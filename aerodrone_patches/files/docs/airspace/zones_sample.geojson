@@ -1,0 +1,12 @@
+{
+  "type": "FeatureCollection",
+  "_comment": "예시 데이터. 관제권 반경 9.3 km(5 NM) 원을 Point+radius_m 로 표현. 실제 비행·발표 전 드론원스탑(drone.onestop.go.kr) 공식 공역으로 교체.",
+  "features": [
+    {"type": "Feature", "properties": {"name": "인천국제공항 관제권 (예시)", "kind": "관제권", "radius_m": 9300, "note": "예시"},
+     "geometry": {"type": "Point", "coordinates": [126.4407, 37.4602]}},
+    {"type": "Feature", "properties": {"name": "김포국제공항 관제권 (예시)", "kind": "관제권", "radius_m": 9300, "note": "예시"},
+     "geometry": {"type": "Point", "coordinates": [126.7906, 37.5583]}},
+    {"type": "Feature", "properties": {"name": "예시 비행제한구역 (폴리곤 형식 예)", "kind": "제한", "max_alt_m": 60, "note": "형식 예시 — 실제 구역 아님"},
+     "geometry": {"type": "Polygon", "coordinates": [[[126.60, 37.30], [126.62, 37.30], [126.62, 37.32], [126.60, 37.32], [126.60, 37.30]]]}}
+  ]
+}

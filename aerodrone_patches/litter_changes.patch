@@ -1,0 +1,1113 @@
+diff -ruN a/litter/__main__.py b/litter/__main__.py
+--- a/litter/__main__.py	2026-10-01 18:18:57.557615448 +0000
++++ b/litter/__main__.py	2026-10-01 18:25:44.905965193 +0000
+@@ -165,7 +165,14 @@
+     p.add_argument("--every", type=float, default=1.0, help="몇 초마다 한 프레임")
+     p.add_argument("--offset", type=float, default=0.0, help="영상-로그 시간 보정 (초)")
+ 
++    p = sub.add_parser("preflight", help="비행 전/후 규정 점검 (야간·150 m·공역·사람) — python -m litter.airspace 와 동일",
++                       add_help=False)
++    p.add_argument("rest", nargs=argparse.REMAINDER)
++
+     a = ap.parse_args(argv)
++    if a.cmd == "preflight":
++        from .airspace import main as airspace_main
++        return airspace_main(a.rest)
+     if a.cmd == "inspect":
+         ingest.inspect(a.path)
+     elif a.cmd == "synth":
+diff -ruN a/litter/airspace.py b/litter/airspace.py
+--- a/litter/airspace.py	1970-01-01 00:00:00.000000000 +0000
++++ b/litter/airspace.py	2026-10-01 18:23:45.879220360 +0000
+@@ -0,0 +1,268 @@
++"""
++비행 전/후 공역·규정 점검 (preflight) — "비행은 사람"이라도 계획 단계에서 규정을 코드로 확인한다.
++
++점검 항목 (항공안전법·시행규칙의 초경량비행장치 조종자 준수사항 기준; 코드는 '확인'만 하고 승인 여부 판단은 사람이):
++  1) 야간   : 일몰 후 ~ 일출 전 비행 → 특별비행승인 대상 (250 g 미만도 준수사항은 적용되는 것으로 보고 경고)
++  2) 고도   : 지표·수면 기준 150 m 초과 → 비행승인 대상 (SRT 상대고도는 이륙점 기준이라 참고값)
++  3) 공역   : 비행금지·제한구역·관제권 폴리곤/원 안에 궤적(또는 계획점)이 들어가는지
++  4) 가시권 : 이륙점에서 최대 수평거리 (VLOS는 거리 규정이 아니라 참고값으로만)
++  5) 사람   : 탐지 결과(objects.csv의 obstacle: person 등)가 있으면 '사람 위 비행' 경고
++
++구역 데이터: GeoJSON FeatureCollection. Polygon이면 그대로, Point면 properties.radius_m 로 원.
++  properties: name, kind(금지|제한|관제권|기타), note, max_alt_m(선택)
++  ⚠️ 내장 SAMPLE_ZONES 는 **예시**(인천·김포 관제권 반경 9.3 km 원). 발표·실비행 전에
++     드론원스탑(drone.onestop.go.kr)·공공데이터포털의 공식 공역 데이터로 교체할 것.
++
++  python -m litter.airspace --srt DJI_0007.SRT --out runs/preflight/0007 [--zones zones.geojson] [--objects runs/map/0007/objects.csv]
++  python -m litter.airspace --points "37.3843,126.6571;37.3850,126.6580" --time "2026-10-02 10:00" --alt 20 --out runs/preflight/plan
++"""
++import argparse
++import csv
++import json
++import math
++from pathlib import Path
++
++from . import solar
++
++ALT_LIMIT_M = 150.0          # 항공안전법 시행규칙: 150 m 이상 고도 비행은 승인 대상
++PEOPLE = {"person", "bicycle", "motorcycle", "dog"}
++
++SAMPLE_ZONES = [
++    {"name": "인천국제공항 관제권 (예시)", "kind": "관제권", "center": [37.4602, 126.4407], "radius_m": 9300.0,
++     "note": "예시 값 — 드론원스탑 공식 공역 데이터로 교체"},
++    {"name": "김포국제공항 관제권 (예시)", "kind": "관제권", "center": [37.5583, 126.7906], "radius_m": 9300.0,
++     "note": "예시 값 — 드론원스탑 공식 공역 데이터로 교체"},
++]
++
++
++def haversine_m(lat1, lon1, lat2, lon2):
++    R = 6371008.8
++    p1, p2 = math.radians(lat1), math.radians(lat2)
++    dp, dl = p2 - p1, math.radians(lon2 - lon1)
++    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
++    return 2 * R * math.asin(min(1.0, math.sqrt(a)))
++
++
++def load_zones(path=None):
++    """GeoJSON → 구역 목록. path가 없으면 SAMPLE_ZONES(예시)."""
++    if not path:
++        return [dict(z, sample=True) for z in SAMPLE_ZONES]
++    d = json.loads(Path(path).read_text(encoding="utf-8"))
++    feats = d["features"] if d.get("type") == "FeatureCollection" else [d]
++    out = []
++    for f in feats:
++        g, p = f.get("geometry", {}), f.get("properties", {}) or {}
++        z = {"name": p.get("name", "구역"), "kind": p.get("kind", "기타"), "note": p.get("note", ""),
++             "max_alt_m": p.get("max_alt_m"), "sample": False}
++        if g.get("type") == "Point":
++            lon, lat = g["coordinates"][:2]
++            z.update(center=[lat, lon], radius_m=float(p.get("radius_m", 9300.0)))
++        elif g.get("type") == "Polygon":
++            z["polygon"] = [(c[1], c[0]) for c in g["coordinates"][0]]   # GeoJSON은 [lon, lat]
++        elif g.get("type") == "MultiPolygon":
++            z["polygon"] = [(c[1], c[0]) for c in g["coordinates"][0][0]]
++        else:
++            continue
++        out.append(z)
++    return out
++
++
++def _in_polygon(lat, lon, ring):
++    """레이 캐스팅 (작은 구역용, 위경도 그대로)."""
++    inside = False
++    n = len(ring)
++    for i in range(n):
++        y1, x1 = ring[i]
++        y2, x2 = ring[(i + 1) % n]
++        if (y1 > lat) != (y2 > lat):
++            x = x1 + (lat - y1) * (x2 - x1) / (y2 - y1)
++            if lon < x:
++                inside = not inside
++    return inside
++
++
++def dist_to_zone_m(lat, lon, zone):
++    """구역 경계까지 거리 (안이면 음수). 폴리곤은 꼭짓점까지 최소거리로 근사."""
++    if "center" in zone:
++        return haversine_m(lat, lon, *zone["center"]) - zone["radius_m"]
++    d = min(haversine_m(lat, lon, a, b) for a, b in zone["polygon"])
++    return -d if _in_polygon(lat, lon, zone["polygon"]) else d
++
++
++def check_points(pts, zones, alts=None):
++    """pts: [(lat, lon), ...]. 반환 {zones_hit: [...], nearest: {...}}."""
++    hit, nearest = [], None
++    for z in zones:
++        ds = [dist_to_zone_m(a, b, z) for a, b in pts]
++        inside = [i for i, d in enumerate(ds) if d <= 0]
++        dmin = min(ds) if ds else float("inf")
++        if inside:
++            h = {"name": z["name"], "kind": z["kind"], "n_points": len(inside), "first_index": inside[0],
++                 "sample": z.get("sample", False), "note": z.get("note", "")}
++            if alts is not None and z.get("max_alt_m") is not None:
++                h["max_alt_in_zone_m"] = float(max(alts[i] for i in inside))
++                h["alt_over_zone_limit"] = h["max_alt_in_zone_m"] > z["max_alt_m"]
++            hit.append(h)
++        if nearest is None or dmin < nearest["distance_m"]:
++            nearest = {"name": z["name"], "kind": z["kind"], "distance_m": round(dmin, 1), "sample": z.get("sample", False)}
++    return {"zones_hit": hit, "nearest": nearest}
++
++
++def _obstacles(objects_csv):
++    if not objects_csv or not Path(objects_csv).exists():
++        return None
++    n = {}
++    with open(objects_csv, encoding="utf-8-sig") as f:
++        for r in csv.DictReader(f):
++            if r.get("kind") == "obstacle":
++                n[r["cls"]] = n.get(r["cls"], 0) + 1
++    return n
++
++
++def check_track(tel, zones, tz_hours=9.0, alt_limit_m=ALT_LIMIT_M, objects_csv=None, alt_fix=None):
++    """SRT 기록(telemetry.read_srt 결과) → 점검 보고 dict."""
++    fx = [r for r in tel if "lat" in r and "lon" in r]
++    if not fx:
++        raise SystemExit("SRT에 위경도가 없음")
++    pts = [(r["lat"], r["lon"]) for r in fx]
++    alts = [alt_fix if alt_fix is not None else float(r.get("alt", 0) or 0) for r in fx]
++    lat0, lon0 = pts[0]
++    clat = sum(p[0] for p in pts) / len(pts)
++    clon = sum(p[1] for p in pts) / len(pts)
++    # 시각: SRT 현지 시각 문자열(dt_str) 우선, 없으면 dt(기계 시간대로 해석된 값)
++    ts = []
++    for r in fx:
++        if r.get("dt_str"):
++            ts.append(solar.local_to_utc(r["dt_str"], tz_hours))
++        elif r.get("dt"):
++            ts.append(float(r["dt"]))
++    rep = {"n_fix": len(fx), "center_latlon": [round(clat, 6), round(clon, 6)],
++           "takeoff_latlon": [round(lat0, 6), round(lon0, 6)],
++           "max_rel_alt_m": round(max(alts), 1), "alt_limit_m": alt_limit_m,
++           "max_dist_from_takeoff_m": round(max(haversine_m(lat0, lon0, a, b) for a, b in pts), 1),
++           "track_length_m": round(sum(haversine_m(*pts[i], *pts[i + 1]) for i in range(len(pts) - 1)), 1)}
++    if ts:
++        t0, t1 = min(ts), max(ts)
++        e0, _ = solar.solar_position(t0, clat, clon)
++        e1, _ = solar.solar_position(t1, clat, clon)
++        rise, sett = solar.sun_times(t0, clat, clon)
++        rep.update(start_local=solar.fmt_local(t0, tz_hours), end_local=solar.fmt_local(t1, tz_hours),
++                   duration_s=round(t1 - t0, 1), sun_elev_start_deg=round(e0, 1), sun_elev_end_deg=round(e1, 1),
++                   sunrise_local=solar.fmt_local(rise, tz_hours) if rise else None,
++                   sunset_local=solar.fmt_local(sett, tz_hours) if sett else None,
++                   night=bool(e0 < -0.833 or e1 < -0.833))
++    else:
++        rep.update(night=None, note_time="SRT에 시각이 없어 야간 판정 불가")
++    rep.update(check_points(pts, zones, alts))
++    rep["obstacles"] = _obstacles(objects_csv)
++    rep["verdicts"] = _verdicts(rep)
++    return rep
++
++
++def check_plan(points, zones, when_local=None, tz_hours=9.0, alt_m=None, alt_limit_m=ALT_LIMIT_M):
++    """계획 경로점(lat, lon)으로 비행 전 점검."""
++    clat = sum(p[0] for p in points) / len(points)
++    clon = sum(p[1] for p in points) / len(points)
++    rep = {"n_points": len(points), "center_latlon": [round(clat, 6), round(clon, 6)],
++           "max_rel_alt_m": alt_m, "alt_limit_m": alt_limit_m}
++    if when_local:
++        t = solar.local_to_utc(when_local, tz_hours)
++        e, _ = solar.solar_position(t, clat, clon)
++        rise, sett = solar.sun_times(t, clat, clon)
++        rep.update(start_local=solar.fmt_local(t, tz_hours), sun_elev_start_deg=round(e, 1), night=bool(e < -0.833),
++                   sunrise_local=solar.fmt_local(rise, tz_hours) if rise else None,
++                   sunset_local=solar.fmt_local(sett, tz_hours) if sett else None)
++    else:
++        rep["night"] = None
++    rep.update(check_points(points, zones, [alt_m] * len(points) if alt_m is not None else None))
++    rep["verdicts"] = _verdicts(rep)
++    return rep
++
++
++def _verdicts(rep):
++    v = []
++    if rep.get("night") is True:
++        v.append({"item": "야간", "level": "승인필요", "msg": f"일몰 후 비행 (일몰 {rep.get('sunset_local')}) → 특별비행승인 없이는 불가"})
++    elif rep.get("night") is False:
++        v.append({"item": "야간", "level": "OK", "msg": f"주간 비행 (일출 {rep.get('sunrise_local')} · 일몰 {rep.get('sunset_local')})"})
++    else:
++        v.append({"item": "야간", "level": "확인", "msg": "비행 시각 정보 없음 — 수동 확인"})
++    a, lim = rep.get("max_rel_alt_m"), rep.get("alt_limit_m")
++    if a is None:
++        v.append({"item": "고도", "level": "확인", "msg": "고도 정보 없음"})
++    elif a > lim:
++        v.append({"item": "고도", "level": "승인필요", "msg": f"최고 상대고도 {a} m > {lim:.0f} m"})
++    else:
++        v.append({"item": "고도", "level": "OK", "msg": f"최고 상대고도 {a} m (한계 {lim:.0f} m, 이륙점 기준 기압고도라 AGL과 다를 수 있음)"})
++    hits = rep.get("zones_hit", [])
++    if hits:
++        names = ", ".join(f"{h['name']}[{h['kind']}]" for h in hits)
++        v.append({"item": "공역", "level": "승인필요", "msg": f"구역 진입: {names}" + (" (예시 데이터 — 공식 데이터로 확인)" if any(h["sample"] for h in hits) else "")})
++    else:
++        nz = rep.get("nearest") or {}
++        v.append({"item": "공역", "level": "OK", "msg": f"구역 진입 없음 · 가장 가까운 {nz.get('name')} 경계까지 {nz.get('distance_m')} m"
++                  + (" (예시 데이터 — 공식 데이터로 확인)" if nz.get("sample") else "")})
++    d = rep.get("max_dist_from_takeoff_m")
++    if d is not None:
++        v.append({"item": "가시권", "level": "OK" if d < 300 else "확인", "msg": f"이륙점에서 최대 {d} m (육안 확인 가능 거리인지 사람이 판단)"})
++    ob = rep.get("obstacles")
++    if ob:
++        ppl = {k: n for k, n in ob.items() if k in PEOPLE}
++        if ppl:
++            v.append({"item": "사람", "level": "주의", "msg": f"비행 영상에서 사람·이륜차 탐지 {ppl} → 사람 위 비행 금지 준수 확인"})
++    return v
++
++
++def write_report(rep, out_dir, title="비행 점검"):
++    out = Path(out_dir)
++    out.mkdir(parents=True, exist_ok=True)
++    (out / "preflight.json").write_text(json.dumps(rep, ensure_ascii=False, indent=1), encoding="utf-8")
++    lines = [f"# {title}", ""]
++    for v in rep["verdicts"]:
++        mark = {"OK": "✅", "주의": "⚠️", "확인": "❔", "승인필요": "⛔"}[v["level"]]
++        lines.append(f"- {mark} **{v['item']}** ({v['level']}): {v['msg']}")
++    lines += ["", f"- 기록 {rep.get('n_fix', rep.get('n_points'))}개 · 중심 {rep['center_latlon']}"]
++    if rep.get("start_local"):
++        lines.append(f"- 시각 {rep['start_local']} ~ {rep.get('end_local', '')} · 태양 고도 {rep.get('sun_elev_start_deg')}° → {rep.get('sun_elev_end_deg', '')}°")
++    if rep.get("track_length_m") is not None:
++        lines.append(f"- 궤적 {rep['track_length_m']} m · 최고 상대고도 {rep['max_rel_alt_m']} m")
++    lines += ["", "> 구역 데이터가 '예시'면 드론원스탑 공식 공역으로 교체 후 다시 확인. 승인 여부 판단은 조종자 책임."]
++    (out / "preflight.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
++    return out / "preflight.md"
++
++
++def print_report(rep):
++    for v in rep["verdicts"]:
++        print(f"  [{v['level']:<4}] {v['item']}: {v['msg']}")
++
++
++def main(argv=None):
++    ap = argparse.ArgumentParser(prog="litter.airspace", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
++    ap.add_argument("--srt", help="비행 기록 SRT (사후 점검)")
++    ap.add_argument("--points", help="계획 경로점 'lat,lon;lat,lon;...' (사전 점검)")
++    ap.add_argument("--time", help="계획 비행 시각 '2026-10-02 10:00' (현지)")
++    ap.add_argument("--alt", type=float, help="계획 고도 m")
++    ap.add_argument("--alt_fix", type=float, help="SRT 고도 대신 쓸 고정값 (SRT 고도가 흘렀을 때)")
++    ap.add_argument("--zones", help="공역 GeoJSON (없으면 예시 관제권 2개)")
++    ap.add_argument("--objects", help="orbit_map/video_map objects.csv — 사람 탐지 경고용")
++    ap.add_argument("--tz", type=float, default=9.0, help="SRT 시각의 시간대 (KST 9)")
++    ap.add_argument("--out", required=True)
++    a = ap.parse_args(argv)
++    zones = load_zones(a.zones)
++    if a.srt:
++        from .telemetry import read_srt
++        rep = check_track(read_srt(a.srt), zones, a.tz, objects_csv=a.objects, alt_fix=a.alt_fix)
++        title = f"비행 점검 — {Path(a.srt).name}"
++    elif a.points:
++        pts = [tuple(float(v) for v in p.split(",")) for p in a.points.split(";") if p.strip()]
++        rep = check_plan(pts, zones, a.time, a.tz, a.alt)
++        title = "비행 전 점검 (계획 경로)"
++    else:
++        raise SystemExit("--srt 또는 --points 필요")
++    print_report(rep)
++    p = write_report(rep, a.out, title)
++    print(f"→ {p} · preflight.json" + ("  (⚠️ 공역은 예시 데이터)" if not a.zones else ""))
++
++
++if __name__ == "__main__":
++    main()
+diff -ruN a/litter/batch3d.py b/litter/batch3d.py
+--- a/litter/batch3d.py	2026-10-01 18:18:57.557665162 +0000
++++ b/litter/batch3d.py	2026-10-01 18:28:59.936195203 +0000
+@@ -411,13 +411,21 @@
+     return "부피 실패", f"점 부족(물체 점 {vol.get('points_object', 0)})"
+ 
+ 
+-def _confidence(vol, gps_rms):
+-    """부피 신뢰 플래그: 물체 점 수 · 사용 뷰 수 · 바닥 평면 기울기 · 3D↔GPS 잔차."""
++def _confidence(vol, gps_rms, sfm=None, scale_src=""):
++    """부피 신뢰 플래그: 물체 점 수 · 사용 뷰 수 · 바닥 평면 기울기 · 3D↔GPS 잔차
++    + (0015 결과로 보강) 마스크 부피와 높이지도 부피의 불일치 · SfM 등록률 · 희소 점 수.
++    0015에서 '높음'이었던 #6(+440 %: 마스크 85 L vs 높이지도 21 L)·#19(+73 %: 뷰 8·점 442)·#9(+35 %: 등록 23/40, 희소 1,077)는
++    이 기준으로 각각 낮음·중간·중간이 되고, 실제로 맞았던 #21(−17 %)과 0007 선회(뷰 24, 점 1,400~3,200)는 높음을 유지한다.
++    3D↔GPS 잔차는 축척을 GPS 경로에서 가져왔을 때만 부피에 영향 → scale_src 가 GPS가 아니면(SRT 고도 축척) 잔차는 보지 않는다
++    (0007 선회는 잔차 1.16 m지만 축척은 고도 기준이라 부피와 무관)."""
+     if vol is None or "volume_heightmap_L" not in vol:
+         return ""
+     pts, views, tilt = vol.get("points_object", 0), vol.get("views_used", 0), vol.get("ground_plane_tilt_deg", 0)
+     rms = float(gps_rms) if gps_rms not in ("", None) else 9.9
+-    why = []
++    if scale_src and not str(scale_src).upper().startswith("GPS"):
++        rms = 0.0   # 고도 기준 축척: GPS 잔차는 위치 오차일 뿐 부피 신뢰와 무관
++    sfm = sfm or {}
++    why, soft = [], []
+     if pts < 150:
+         why.append(f"점 {pts}")
+     if views < 5:
+@@ -426,9 +434,19 @@
+         why.append(f"기울기 {tilt:.0f}°")
+     if rms > 1.0:
+         why.append(f"GPS잔차 {rms:.1f}m")
++    vm, vh = vol.get("volume_mask_box_L"), vol.get("volume_heightmap_median_L") or vol.get("volume_heightmap_L")
++    if vm and vh and not (0.6 <= vm / vh <= 1.6):   # 마스크×높이와 높이지도가 서로 다른 물체를 보고 있다
++        why.append(f"마스크/높이지도 {vm / vh:.1f}배")
++    reg, ext, sp = sfm.get("reg"), sfm.get("ext"), sfm.get("pts")
++    if reg and ext and reg / ext < 0.5:
++        soft.append(f"등록 {reg}/{ext}")
++    if sp not in (None, "") and float(sp) < 2000:
++        soft.append(f"희소점 {int(float(sp))}")
+     if why:
+         return "낮음(" + ",".join(why) + ")"
+-    if pts >= 400 and views >= 8 and tilt < 10 and rms < 0.5:
++    if soft:
++        return "중간(" + ",".join(soft) + ")"
++    if pts >= 600 and views >= 10 and tilt < 10 and rms < 0.5:
+         return "높음"
+     return "중간"
+ 
+@@ -482,7 +500,7 @@
+                  "det_frames_3d": o["seen_frames"] if matched else "",
+                  "L_cm": "", "W_cm": "", "H_cm": "", "vol_med_L": "", "vol_max_L": "", "vol_mask_L": "",
+                  "plane_tilt_deg": "", "views_used": "", "views_excluded": "", "points_object": "",
+-                 "confidence": _confidence(vol, stages.get("map", {}).get("gps_rms_m", "")),
++                 "confidence": _confidence(vol, stages.get("map", {}).get("gps_rms_m", ""), sfm, stages.get("map", {}).get("scale_src", "")),
+                  "status": state, "reason": reason, "viewer": f"{name}/viewer.html", "mask_img": ""}
+             if vol:
+                 r.update(plane_tilt_deg=round(vol.get("ground_plane_tilt_deg", 0), 1), views_used=vol.get("views_used", ""),
+diff -ruN a/litter/fromvideo.py b/litter/fromvideo.py
+--- a/litter/fromvideo.py	2026-10-01 18:18:57.557751410 +0000
++++ b/litter/fromvideo.py	2026-10-01 18:23:46.624034229 +0000
+@@ -106,13 +106,39 @@
+     return items, geo, skipped
+ 
+ 
+-def company_weight(it):
+-    """업체 방식: 박스 면적(m²) × 재질 계수(kg/m²)."""
++def company_weight(it, unit_scale=1.0):
++    """업체 방식: 박스 면적(m²) × 재질 계수. unit_scale=1000이면 계수를 t/m²로 읽은 것(→ kg)."""
+     code = COMPANY_CODE.get(it["cls"], "PLA")
+-    return code, it["area_m2"] * COMPANY_KG_PER_M2[code]
++    return code, it["area_m2"] * COMPANY_KG_PER_M2[code] * unit_scale
+ 
+ 
+-def add_weights(items, cfg, wet=False):
++def check_company_units(labels_path):
++    """업체 라벨의 weight_kg 단위 점검 — '1/100~1/200' 주장을 하기 전에 반드시 볼 것.
++
++    weight_kg ÷ area_sqm = 재질별 '계수'. 이 값이 0.1 kg/m² 미만이면 스티로폼 1 m²가 수십 g이라는 뜻이라
++    (a) 단위가 톤이거나 (b) 자리수 오류일 가능성이 크다. 계수를 ×1000 하면(12·24·20 kg/m²)
++    두께 10~40 cm 더미의 현실적인 면밀도와 같은 자릿수가 된다 → 업체 확인 전에는 '1/100' 숫자를 발표에 쓰지 말 것."""
++    d = json.loads(Path(labels_path).read_text(encoding="utf-8"))
++    coef = {}
++    for f in d["features"]:
++        p = f["properties"]
++        a, w = float(p.get("area_sqm") or 0), float(p.get("weight_kg") or 0)
++        if a > 0 and w > 0:
++            coef.setdefault(p.get("material_code", "?"), []).append(w / a)
++    med = {c: float(np.median(v)) for c, v in coef.items()}
++    total = sum(float(f["properties"].get("weight_kg") or 0) for f in d["features"])
++    suspicious = bool(med) and max(med.values()) < 0.1
++    res = {"implied_kg_per_m2": med, "sum_recorded": total, "n": len(d["features"]),
++           "suspicious_unit": suspicious,
++           "if_tonnes_kg": total * 1000.0,
++           "verdict": ("⚠️ weight_kg를 kg으로 읽으면 면밀도가 0.1 kg/m² 미만(스티로폼 1 m² = 수십 g). 톤 단위 또는 자리 오류 가능성 — "
++                       f"톤으로 읽으면 합계 {total*1000:,.0f} kg. 업체에 단위 확인 전까지 '업체 방식 1/100' 주장 보류, "
++                       "--company-unit t 로 다시 그려서 두 경우 모두 준비할 것.") if suspicious else
++                      "weight_kg 면밀도가 kg/m² 범위로 보임 — 단위 문제 없음"}
++    return res
++
++
++def add_weights(items, cfg, wet=False, company_unit_scale=1.0):
+     """weight.estimate + 젖음·압축·업체방식·참값 기준."""
+     items, _ = weight.estimate(items, cfg)
+     for it in items:
+@@ -128,7 +154,7 @@
+             it["weight_method"] += "+wet"
+         it["bulk_raw_m3"] = it["volume_m3"]
+         it["bulk_m3"] = it["volume_m3"] / it["compress"]  # 마대 적재 기준 (압축 후)
+-        it["company_code"], it["company_kg"] = company_weight(it)
++        it["company_code"], it["company_kg"] = company_weight(it, company_unit_scale)
+         it["truth_kg"] = it["truth_m3"] * p["rho_app"] if it.get("truth_m3") else None
+     return items
+ 
+@@ -141,7 +167,7 @@
+     items, geo, skipped = load_items(a.objvol, cfg, a.material, a.default_material, a.objects, a.vol_key, a.r95)
+     print(f"  물체 {len(items)}개" + (f" · 부피 없어 건너뜀 {skipped}" if skipped else ""))
+     print("[2] 재질 · [3] 무게")
+-    add_weights(items, cfg, wet=a.wet)
++    add_weights(items, cfg, wet=a.wet, company_unit_scale=_unit_scale(a))
+     print(f"  {'물체':<20} {'재질':<13} {'크기(cm)':<13} {'부피 L':>7} {'ρ':>4} {'무게 kg':>8} {'구간':>12} {'업체방식':>9}")
+     for it in items:
+         print(f"  {it['item_id']:<20} {it['cls']:<13} {it['length_m']*100:.0f}×{it['width_m']*100:.0f}×{it['h_p90_m']*100:<5.0f} "
+@@ -154,6 +180,7 @@
+     summary["wet_applied"] = bool(a.wet)
+     summary["kg_wet_hi"] = float(sum(it["weight_wet_hi_kg"] for it in items))
+     summary["volume_key"] = a.vol_key
++    summary["company_unit"] = a.company_unit
+     summary["items"] = [{k: it.get(k) for k in (
+         "item_id", "cls", "material_raw", "lat", "lon", "length_m", "width_m", "h_p90_m", "area_m2",
+         "volume_m3", "truth_m3", "rho_app", "weight_est_kg", "weight_lo_kg", "weight_hi_kg", "weight_wet_hi_kg",
+@@ -239,18 +266,20 @@
+     return p
+ 
+ 
+-def fig_company_labels(out, labels_path):
+-    """(b) 업체 라벨 42개: 기록 weight_kg vs 같은 면적의 현실적 무게 범위."""
++def fig_company_labels(out, labels_path, unit_scale=1.0):
++    """(b) 업체 라벨 42개: 기록 weight_kg vs 같은 면적의 현실적 무게 범위.
++    unit_scale=1000 이면 기록값을 톤으로 읽어 kg으로 환산해 그린다 (단위 확인용 두 번째 그림)."""
+     import matplotlib.pyplot as plt
+     _font()
+     d = json.loads(Path(labels_path).read_text(encoding="utf-8"))
+     rows = []
++    unit_note = " (t→kg 환산)" if unit_scale != 1.0 else ""
+     for f in d["features"]:
+         p = f["properties"]
+         code = p["material_code"]
+         R = REALISTIC.get(code, REALISTIC["PLA"])
+         area = float(p["area_sqm"])
+-        rows.append({"code": code, "area": area, "kg": float(p["weight_kg"]),
++        rows.append({"code": code, "area": area, "kg": float(p["weight_kg"]) * unit_scale,
+                      "lo": area * R["thick"][0] * R["rho"][0], "hi": area * R["thick"][1] * R["rho"][1]})
+     rows.sort(key=lambda r: r["area"])
+     n = len(rows)
+@@ -258,15 +287,15 @@
+     fig, (a1, a2) = plt.subplots(1, 2, figsize=(14, 5.4), gridspec_kw={"width_ratios": [1, 2.2]})
+     # 왼쪽: 기록 무게 분포
+     kg = np.array([r["kg"] for r in rows])
+-    a1.hist(kg, bins=np.linspace(0, 0.26, 14), color=C_COMPANY, edgecolor="white")
+-    a1.set_xlabel("업체 라벨 weight_kg (kg)")
++    a1.hist(kg, bins=np.linspace(0, max(kg.max() * 1.05, 1e-6), 14), color=C_COMPANY, edgecolor="white")
++    a1.set_xlabel("업체 라벨 weight_kg (kg)" + unit_note)
+     a1.set_ylabel("물체 수")
+     a1.set_title(f"업체 라벨 {n}개의 기록 무게\n합계 {kg.sum():.2f} kg · 최대 {kg.max():.3f} kg", fontsize=10)
+     a1.grid(axis="y", alpha=.3)
+     # 오른쪽: 면적순 — 기록값(점) vs 현실적 범위(막대), 로그
+     for i, r in enumerate(rows):
+         a2.plot([i, i], [r["lo"], r["hi"]], color=C_RANGE, lw=4, solid_capstyle="butt", zorder=1)
+-    a2.scatter(xs, kg, color=C_COMPANY, s=22, zorder=3, label="업체 기록 (면적 × 계수)")
++    a2.scatter(xs, kg, color=C_COMPANY, s=22, zorder=3, label="업체 기록 (면적 × 계수)" + unit_note)
+     a2.plot([], [], color=C_RANGE, lw=4, label="현실적 범위 (면적 × 두께 2~35 cm × 밀도)")
+     a2.set_yscale("log")
+     a2.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
+@@ -291,7 +320,7 @@
+     fig.text(0.5, 0.005, "※ 두께·밀도 범위는 가정 (스티로폼 2~35 cm·11~32 kg/m³, 로프 2~5 cm·150~400, 어망 5~30 cm·100~150, 플라스틱 2~10 cm·50~80). "
+              "업체 weight_kg는 실측이 아니라 면적×고정계수 계산값.", ha="center", fontsize=7.5, color="#555")
+     fig.tight_layout(rect=(0, 0.03, 1, 1))
+-    p = out / "fig_compare_company_labels.png"
++    p = out / ("fig_compare_company_labels.png" if unit_scale == 1.0 else "fig_compare_company_labels_as_tonnes.png")
+     fig.savefig(p, dpi=150)
+     plt.close(fig)
+     return p, {"n": n, "sum_kg": float(kg.sum()), "max_kg": float(kg.max()), "realistic_lo_kg": lo_sum,
+@@ -303,8 +332,9 @@
+     out = Path(a.out)
+     out.mkdir(parents=True, exist_ok=True)
+     items, _, _ = load_items(a.objvol, cfg, a.material, a.default_material, a.objects, a.vol_key, a.r95)
+-    add_weights(items, cfg)
+-    res = {"boxes": [{k: it.get(k) for k in ("item_id", "cls", "company_code", "area_m2", "volume_m3", "truth_m3",
++    scale = _unit_scale(a)
++    add_weights(items, cfg, company_unit_scale=scale)
++    res = {"company_unit": a.company_unit, "boxes": [{k: it.get(k) for k in ("item_id", "cls", "company_code", "area_m2", "volume_m3", "truth_m3",
+                                              "rho_app", "company_kg", "weight_est_kg", "weight_lo_kg", "weight_hi_kg", "truth_kg")}
+                      for it in items]}
+     p1 = fig_boxes(out, items)
+@@ -315,13 +345,25 @@
+               f"참값기준 {tk:.3f} kg → 업체는 참값의 1/{tk / b['company_kg']:.0f}, 제안은 {(b['weight_est_kg'] / tk - 1) * 100:+.0f}%"
+               if tk else f"  {b['item_id']}: 업체 {b['company_kg']:.4f} · 제안 {b['weight_est_kg']:.3f}")
+     if a.labels:
+-        p2, st = fig_company_labels(out, a.labels)
++        uc = check_company_units(a.labels)
++        res["unit_check"] = uc
++        print("[단위 점검] " + uc["verdict"])
++        print("  재질별 weight_kg ÷ area_sqm 중앙값: " + ", ".join(f"{c} {v:.4f}" for c, v in uc["implied_kg_per_m2"].items()))
++        p2, st = fig_company_labels(out, a.labels, scale)
+         res["company_labels"] = st
+         print(f"(b) {p2}\n  라벨 {st['n']}개 {st['codes']} · 기록 합계 {st['sum_kg']:.2f} kg (최대 {st['max_kg']:.3f}) · "
+               f"현실적 범위 합계 {st['realistic_lo_kg']:.0f}~{st['realistic_hi_kg']:.0f} kg")
++        if uc["suspicious_unit"] and scale == 1.0:   # 단위가 의심되면 톤으로 읽은 그림도 같이 만들어 둔다
++            p3, st3 = fig_company_labels(out, a.labels, 1000.0)
++            res["company_labels_as_tonnes"] = st3
++            print(f"(b′) {p3}  ← weight_kg를 톤으로 읽은 경우: 합계 {st3['sum_kg']:,.0f} kg (현실적 범위 {st3['realistic_lo_kg']:.0f}~{st3['realistic_hi_kg']:.0f} kg 안인지 확인)")
+     (out / "compare_summary.json").write_text(json.dumps(res, ensure_ascii=False, indent=2, default=float), encoding="utf-8")
+ 
+ 
++def _unit_scale(a):
++    return 1000.0 if getattr(a, "company_unit", "kg") == "t" else 1.0
++
++
+ def main(argv=None):
+     ap = argparse.ArgumentParser(prog="litter.fromvideo", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+     sub = ap.add_subparsers(dest="cmd", required=True)
+@@ -331,7 +373,10 @@
+         p.add_argument("--objects", help="orbit_map objects.csv (objvol.json에 위경도 없을 때)")
+         p.add_argument("--material", help="'태그:재질,...' 재질 덮어쓰기 (예: Plastic_Buoy_55:Styrofoam)")
+         p.add_argument("--default_material", help="태그 매핑 안 되는 물체의 기본 재질")
+-        p.add_argument("--vol_key", default="volume_heightmap_L", help="volume_heightmap_L | volume_mask_box_L | volume_hull_L")
++        p.add_argument("--vol_key", default="volume_heightmap_L",
++                       help="volume_heightmap_L | volume_heightmap_eroded_L(경계 번짐 보정) | volume_mask_box_L | volume_hull_L")
++        p.add_argument("--company-unit", dest="company_unit", default="kg", choices=["kg", "t"],
++                       help="업체 weight_kg·계수의 단위. 업체 확인 전까지 kg/t 두 경우를 모두 만들어 둘 것 (compare는 의심되면 자동으로 t 그림도 생성)")
+         p.add_argument("--r95", type=float, default=1.2, help="위치 95% 반경 m (0007: 3D↔GPS 잔차 1.16 m)")
+         p.add_argument("--config", help="설정 덮어쓰기 JSON")
+         p.add_argument("--out", required=True)
+diff -ruN a/litter/objvol.py b/litter/objvol.py
+--- a/litter/objvol.py	2026-10-01 18:18:57.557852452 +0000
++++ b/litter/objvol.py	2026-10-01 18:25:45.057773371 +0000
+@@ -17,6 +17,14 @@
+   - 뒤집힌 카메라(평면 위 0.3 m 미만, 기울기 85° 초과) 제외. 수직에 가까운(nadir ≥ 0.7) 프레임이 없으면 마스크면적은 null
+   - --device cpu 로 GPU 없이 SAM 실행 가능
+ 
++v2.1 (추가 필드 — 기존 숫자는 그대로, 새 값은 옆에 기록):
++  - volume_heightmap_eroded_L : 조밀 복원 경계 번짐(패치 창 ≈ 1 px) 만큼 발자국을 안쪽으로 줄인 높이지도 부피
++                               (0007 상자 가로·세로가 1~2 cm씩 크게 나온 원인 보정; --edge-erode-px 0 이면 끔)
++  - gsd_obj_cm                : 물체 위치에서의 조밀 복원 해상도 (카메라 거리 ÷ 초점거리 × 1600/--dense-px)
++  - sun_elev_deg·sun_az_deg·shadow_len_m·capture_local : 촬영 시각 태양 고도·방위, 예상 그림자 길이(= 높이 / tan 고도)
++                               → SAM 마스크에 그림자가 섞였을 때 발자국이 얼마나 커질 수 있는지 설명용
++  - --scale auto|alt|gps      : 축척 출처 선택 + SRT 고도와 GPS 경로가 25 % 이상 다르면 경고 (volume.to_metric_auto)
++
+   python -m litter.objvol --orbit runs/orbit/0007 --srt DJI_0007.SRT --ply dense/fused.ply \
+          --objects runs/map/0007_sfm/objects.csv --select "Plastic_Buoy:55,Styrofoam_Buoy:22" --out runs/orbit/0007/objvol
+ """
+@@ -32,6 +40,7 @@
+ from .seg import _imread, _imwrite
+ from .telemetry import read_srt
+ from .volume import fit_ground, to_metric, to_metric_auto, volume_heightmap, volume_hull
++from . import solar
+ 
+ 
+ def read_ply(path):
+@@ -55,7 +64,7 @@
+ 
+ 
+ class Scene:
+-    def __init__(self, orbit_dir, srt, min_track_m=10.0):
++    def __init__(self, orbit_dir, srt, min_track_m=10.0, scale="auto", tz_hours=9.0):
+         import pycolmap
+ 
+         self.dir = Path(orbit_dir)
+@@ -71,8 +80,16 @@
+         from .geometry import Geo
+         geo = Geo(None, lon=tel[fidx[self.imgs[0].name]]["lon"])
+         gps = np.array([geo.to_xy(tel[fidx[i.name]]["lat"], tel[fidx[i.name]]["lon"]) for i in self.imgs])
+-        self.T, self.R, self.s, self.info = to_metric_auto(P, C, D, alt, gps, min_track_m=min_track_m)
++        self.T, self.R, self.s, self.info = to_metric_auto(P, C, D, alt, gps, min_track_m=min_track_m, scale=scale)
++        if self.info.get("scale_warning"):
++            print(f"⚠️ 축척: {self.info['scale_warning']}")
+         self.p0 = self.info["p0"]
++        # 촬영 위치·시각 (태양 고도 → 그림자 길이 설명용). SRT에 시각이 없으면 None
++        self.lat = float(np.median([tel[fidx[i.name]]["lat"] for i in self.imgs]))
++        self.lon = float(np.median([tel[fidx[i.name]]["lon"] for i in self.imgs]))
++        self.tz_hours = tz_hours
++        ts = [solar.local_to_utc(tel[fidx[i.name]]["dt_str"], tz_hours) for i in self.imgs if tel[fidx[i.name]].get("dt_str")]
++        self.t_utc = float(np.median(ts)) if ts else None
+         self.sparse = P
+         self.D = D
+         self.Cm = self.T(C)                      # 카메라 중심 (지면 좌표, m)
+@@ -96,6 +113,20 @@
+         k = self.imgs.index(im)
+         return float(-self.Dm[k, 2])  # 1 = 수직 아래
+ 
++    def focal_px(self):
++        """SfM 프레임(긴 변 1600 px 기준) 초점거리(px). pycolmap 버전마다 속성 이름이 달라 차례로 시도."""
++        for attr in ("focal_length_x", "focal_length"):
++            v = getattr(self.cam, attr, None)
++            if v is not None:
++                return float(v() if callable(v) else v)
++        return float(np.asarray(self.cam.params)[0])
++
++    def gsd_at(self, xyz_m, view_idx, dense_px=1200):
++        """지면 좌표 점 xyz_m 에서의 조밀 복원 해상도(m/px): 카메라 거리 ÷ 초점거리 × (SfM 폭 ÷ 조밀 폭)."""
++        idx = list(view_idx) if len(view_idx) else list(range(len(self.imgs)))
++        dist = float(np.median(np.linalg.norm(self.Cm[idx] - np.asarray(xyz_m, float), axis=1)))
++        return dist / self.focal_px() * (self.cam.width / float(dense_px))
++
+ 
+ def fit_plane(Q, thr=0.02, iters=300, max_n=20000, rng=None):
+     """지역 바닥 평면 z = a·x + b·y + c (RANSAC → 인라이어 최소제곱 2회). 반환 (coef, 인라이어 비율).
+@@ -189,9 +220,11 @@
+ 
+ 
+ def measure_object(sc, sam, center_xy, Pm, n_views=24, search_r=0.8, vote=0.7, h_min=0.03, height="mode", hm_agg="median",
+-                   min_cam_h=0.3, max_tilt=85.0, min_nadir=0.7, device="", out_dir=None, tag="obj", det=None):
++                   min_cam_h=0.3, max_tilt=85.0, min_nadir=0.7, device="", out_dir=None, tag="obj", det=None,
++                   edge_erode_px=1.0, dense_px=1200):
+     """Pm: 지면 좌표(m)의 3D 점 (N,3). 반환 (결과 dict, 물체 점 (x, y, 평면 기준 높이)).
+-    det: 프레임 이미지 → 탐지 상자 xyxy 목록 (주면 SAM 상자 프롬프트, 점을 품은 상자가 없으면 점 프롬프트)."""
++    det: 프레임 이미지 → 탐지 상자 xyxy 목록 (주면 SAM 상자 프롬프트, 점을 품은 상자가 없으면 점 프롬프트).
++    edge_erode_px: 조밀 복원 경계 번짐 보정 폭(px, 물체 위치 GSD 기준). 0이면 보정 부피를 계산하지 않는다."""
+     center0 = np.asarray(center_xy, float)
+ 
+     def local(cxy):
+@@ -245,7 +278,7 @@
+     views = views[::max(1, len(views) // n_views)][:n_views]
+     inside = np.zeros(len(X))
+     seen = np.zeros(len(X))
+-    best_area, used, gallery, used_names, used_tilts, n_box_prompt = None, 0, [], [], [], 0
++    best_area, used, gallery, used_names, used_tilts, n_box_prompt, used_k = None, 0, [], [], [], 0, []
+     for _, im, uv, k in views:
+         img = _imread(sc.dir / "frames" / im.name)
+         box = pick_box(det(img), uv) if det else None
+@@ -254,6 +287,7 @@
+             continue
+         used += 1
+         n_box_prompt += box is not None
++        used_k.append(k)
+         used_names.append(im.name)
+         used_tilts.append(float(sc.tilt_deg[k]))
+         p = sc.project(im, X)
+@@ -296,7 +330,12 @@
+            "center_xy": [float(center[0]), float(center[1])], "center_shift_m": float(np.linalg.norm(center - center0)),
+            "ground_z": gz, "ground_plane_tilt_deg": tilt_plane, "ground_plane_inlier": inl,
+            "height_method": height, "h_min": h_min,
+-           "mask_area_m2": None, "volume_mask_box_L": None, "mask_nadir_score": None}
++           "mask_area_m2": None, "volume_mask_box_L": None, "mask_nadir_score": None,
++           "capture_local": solar.fmt_local(sc.t_utc, sc.tz_hours) if sc.t_utc else None,
++           "sun_elev_deg": None, "sun_az_deg": None, "shadow_len_m": None}
++    if sc.t_utc:
++        el, az = solar.solar_position(sc.t_utc, sc.lat, sc.lon)
++        res.update(sun_elev_deg=round(el, 1), sun_az_deg=round(az, 1))
+     if len(O) >= 10:
+         h_p90 = float(np.percentile(O[:, 2], 90))
+         h_mode = height_mode(O[:, 2])
+@@ -318,6 +357,16 @@
+                    footprint_m2=foot, hm_agg=hm_agg, volume_heightmap_L=(v_med if hm_agg == "median" else v_max) * 1000,
+                    volume_heightmap_median_L=v_med * 1000, volume_heightmap_max_L=v_max * 1000,
+                    volume_hull_L=volume_hull(O) * 1000)
++        # 경계 번짐 보정: 물체 위치 GSD × edge_erode_px 만큼 발자국을 안쪽으로 (기존 필드는 그대로 두고 옆에 기록)
++        gsd = sc.gsd_at([center[0], center[1], gz + h_top / 2], used_k, dense_px)
++        res["gsd_obj_cm"] = round(gsd * 100, 2)
++        if edge_erode_px > 0:
++            er = edge_erode_px * gsd
++            v_er, foot_er, _ = volume_heightmap(O, agg=hm_agg, erode_m=er)
++            res.update(edge_erode_m=round(er, 4), footprint_eroded_m2=foot_er, volume_heightmap_eroded_L=v_er * 1000)
++        if res.get("sun_elev_deg") is not None:
++            sl = solar.shadow_length(h_top, res["sun_elev_deg"])
++            res["shadow_len_m"] = round(sl, 3) if sl is not None else None
+         if best_area:
+             res.update(mask_area_m2=best_area[0], volume_mask_box_L=best_area[0] * h_top * 1000,
+                        mask_nadir_score=best_area[1])
+@@ -348,6 +397,11 @@
+     ap.add_argument("--det-weights", help="탐지 모델(예: yolov8s-worldv2.pt) — 탐지 상자를 SAM 프롬프트로 (상자가 크게 찍힐 때 필수)")
+     ap.add_argument("--det-classes", help="YOLO-World 클래스 이름 (쉼표 구분)")
+     ap.add_argument("--det-conf", type=float, default=0.25)
++    ap.add_argument("--scale", default="auto", choices=["auto", "alt", "gps"],
++                    help="축척 출처: auto(이동 거리 규칙) / alt(SRT 상대고도) / gps(GPS 경로 강제). 두 값이 25%% 이상 다르면 경고")
++    ap.add_argument("--edge-erode-px", type=float, default=1.0, help="조밀 복원 경계 번짐 보정 폭(px). 0 = 보정 부피 생략")
++    ap.add_argument("--dense-px", type=int, default=1200, help="조밀 복원에 쓴 max_image_size (GSD 계산용; 빠른 설정 1200, 기본 1600)")
++    ap.add_argument("--tz", type=float, default=9.0, help="SRT 시각의 시간대 (태양 고도 계산용, KST 9)")
+     a = ap.parse_args(argv)
+     det = None
+     if a.det_weights:
+@@ -359,12 +413,17 @@
+         det = lambda img: ym.predict(img, conf=a.det_conf, imgsz=1600, verbose=False, **dkw)[0].boxes.xyxy.cpu().numpy()
+     out = Path(a.out)
+     out.mkdir(parents=True, exist_ok=True)
+-    sc = Scene(a.orbit, a.srt, min_track_m=a.min_track)
++    sc = Scene(a.orbit, a.srt, min_track_m=a.min_track, scale=a.scale, tz_hours=a.tz)
+     pts = read_ply(a.ply)[0] if a.ply else sc.sparse
+     Pm = sc.T(pts).astype(np.float32)   # 지면 좌표(m)로 한 번만 변환
+     del pts
+-    print(f"3D 점 {len(Pm):,}개 ({'조밀' if a.ply else '희소'}) · 축척 편차 {sc.info['scale_spread_pct']:.1f}%"
+-          f" · 카메라 기울기 중앙값 {np.median(sc.tilt_deg):.0f}° · SAM 장치 {a.device or '자동'}")
++    print(f"3D 점 {len(Pm):,}개 ({'조밀' if a.ply else '희소'}) · 축척 {sc.info.get('scale_source')} 편차 {sc.info['scale_spread_pct']:.1f}%"
++          + (f" · GPS 배율 검증 {sc.info['gps_scale_factor_check']:.2f}" if sc.info.get("gps_scale_factor_check") else "")
++          + f" · 카메라 기울기 중앙값 {np.median(sc.tilt_deg):.0f}° · SAM 장치 {a.device or '자동'}")
++    if sc.t_utc:
++        el, az = solar.solar_position(sc.t_utc, sc.lat, sc.lon)
++        print(f"촬영 {solar.fmt_local(sc.t_utc, a.tz)} · 태양 고도 {el:.1f}° 방위 {az:.0f}°"
++              + (" · ⚠️ 일몰 후(야간)" if el < -0.833 else f" · 높이 10 cm 물체 그림자 ≈ {solar.shadow_length(0.10, el) or float('nan'):.2f} m"))
+     sam = SAM("sam2.1_b.pt")
+     objs = list(csv.DictReader(open(a.objects, encoding="utf-8-sig")))
+     sel = [tuple(s.split(":")) for s in a.select.split(",")] if a.select else None
+@@ -380,7 +439,8 @@
+         seen_tags[base] = seen_tags.get(base, 0) + 1
+         tag = base if seen_tags[base] == 1 else f"{base}_{seen_tags[base]}"  # 같은 클래스·프레임수가 여럿이면 _2, _3
+         r, _ = measure_object(sc, sam, (float(o["local_x_m"]), float(o["local_y_m"])), Pm, n_views=a.n_views, search_r=a.search_r,
+-                              h_min=a.h_min, height=a.height, hm_agg=a.hm_agg, device=a.device, out_dir=out, tag=tag, det=det)
++                              h_min=a.h_min, height=a.height, hm_agg=a.hm_agg, device=a.device, out_dir=out, tag=tag, det=det,
++                              edge_erode_px=a.edge_erode_px, dense_px=a.dense_px)
+         r["lat"], r["lon"] = o["lat"], o["lon"]
+         r["csv_local_xy"] = [float(o["local_x_m"]), float(o["local_y_m"])]
+         if base in truth:
+@@ -401,6 +461,10 @@
+                 msg += f" · 마스크면적 {r['mask_area_m2']:.3f} m² × 높이 = {r['volume_mask_box_L']:.1f} L"
+             else:
+                 msg += " · 마스크면적 없음(수직 프레임 없음)"
++            if "volume_heightmap_eroded_L" in r:
++                msg += f" · 번짐보정({r['edge_erode_m']*100:.1f} cm, GSD {r['gsd_obj_cm']} cm) {r['volume_heightmap_eroded_L']:.1f} L"
++            if r.get("shadow_len_m") is not None:
++                msg += f" · 예상 그림자 {r['shadow_len_m']*100:.0f} cm"
+         if "truth_L" in r:
+             msg += f"  (정답 {r['truth_cm']} = {r['truth_L']:.1f} L)"
+         print(msg)
+diff -ruN a/litter/orbit_map.py b/litter/orbit_map.py
+--- a/litter/orbit_map.py	2026-10-01 18:18:57.557897967 +0000
++++ b/litter/orbit_map.py	2026-10-01 18:25:44.905179881 +0000
+@@ -39,7 +39,7 @@
+     return Rt, t, float(np.sqrt(np.mean(res ** 2)))
+ 
+ 
+-def run(orbit_dir, srt, out, litter_w, obstacle_w=None, conf=0.3, merge_m=0.5, min_hits=3, classes=None, min_track_m=10.0):
++def run(orbit_dir, srt, out, litter_w, obstacle_w=None, conf=0.3, merge_m=0.5, min_hits=3, classes=None, min_track_m=10.0, scale="auto"):
+     import pycolmap
+     from ultralytics import YOLO
+ 
+@@ -55,7 +55,9 @@
+     alt = np.array([tel[fidx[i.name]]["alt"] for i in imgs])
+     geo = Geo(None, lon=tel[fidx[imgs[0].name]]["lon"])
+     gps = np.array([geo.to_xy(tel[fidx[i.name]]["lat"], tel[fidx[i.name]]["lon"]) for i in imgs])
+-    T, Rg, s, info = to_metric_auto(P, C, D, alt, gps, min_track_m=min_track_m)
++    T, Rg, s, info = to_metric_auto(P, C, D, alt, gps, min_track_m=min_track_m, scale=scale)
++    if info.get("scale_warning"):
++        print(f"  ⚠️ 축척: {info['scale_warning']}")
+     Cm = T(C)
+     R2, t2, rms = fit_rigid2d(Cm[:, :2], gps)
+     to_map = lambda q: np.asarray(q)[..., :2] @ R2.T + t2
+@@ -166,9 +168,11 @@
+     ap.add_argument("--conf", type=float, default=0.3)
+     ap.add_argument("--classes", help="YOLO-World용 클래스 이름 (쉼표 구분)")
+     ap.add_argument("--min-track", type=float, default=10.0, help="GPS 수평 이동이 이 거리(m) 이상이면 GPS 경로로 축척 (SRT 고도가 틀릴 때 낮춰서 강제)")
++    ap.add_argument("--scale", default="auto", choices=["auto", "alt", "gps"],
++                    help="축척 출처: auto(이동 거리로 자동) / alt(SRT 상대고도) / gps(GPS 경로 강제). 고도·GPS가 25%% 이상 다르면 경고가 뜬다")
+     a = ap.parse_args(argv)
+     run(a.orbit, a.srt, a.out, a.litter, a.obstacle, a.conf,
+-        classes=[c.strip() for c in a.classes.split(",")] if a.classes else None, min_track_m=a.min_track)
++        classes=[c.strip() for c in a.classes.split(",")] if a.classes else None, min_track_m=a.min_track, scale=a.scale)
+ 
+ 
+ if __name__ == "__main__":
+diff -ruN a/litter/sim_ortho.py b/litter/sim_ortho.py
+--- a/litter/sim_ortho.py	2026-10-01 18:18:57.558016448 +0000
++++ b/litter/sim_ortho.py	2026-10-01 18:25:45.206991831 +0000
+@@ -608,10 +608,24 @@
+ 
+ 
+ # ================================================================ 메인 루프
++def mission_metrics(flight_t_s, flight_dist_m, speed, dt, cam, alt, overlap_side, endurance_s=1500.0, reserve=0.25):
++    """항공교통 쪽 질문 대비 지표: 전후/횡 겹침률, 배터리 소티 수, 예비 배터리.
++    endurance_s: 1회 비행 가능 시간(공칭 36분 기체면 바람·저온 감안 25분=1500 s), reserve: 귀환 예비(25 %)."""
++    fw, fh = cam.footprint(alt)
++    usable = endurance_s * (1 - reserve)
++    return {"forward_overlap": round(max(0.0, 1 - speed * dt / fh), 3), "side_overlap": overlap_side,
++            "frame_spacing_m": speed * dt, "footprint_m": [round(fw, 1), round(fh, 1)],
++            "endurance_s": endurance_s, "reserve_frac": reserve, "usable_s": usable,
++            "sorties": int(math.ceil(flight_t_s / usable)) if usable > 0 else None,
++            "battery_used_frac": round(flight_t_s / endurance_s, 2) if endurance_s else None,
++            "mean_ground_speed_mps": round(flight_dist_m / flight_t_s, 2) if flight_t_s else None}
++
++
+ def run(name, model="uavvaste", bbox=None, size=100.0, alt=20.0, alt_low=8.0, speed=5.0, dt=1.0,
+         overlap=0.3, conf_lo=0.25, conf_hi=0.5, merge_m=1.0, revisit=True, rv_frames=3, wind=(0.0, 0.0),
+         gust=0.0, jitter=0.3, gps_noise=0.0, yaw_noise=1.0, cam=None, imgsz=1024, max_frames=1500,
+-        tol_m=1.0, seed=0, out_root=ROOT / "runs" / "sim", ortho=ORTHO, labels_path=LABELS, gif_every=1, gif_max=120):
++        tol_m=1.0, seed=0, out_root=ROOT / "runs" / "sim", ortho=ORTHO, labels_path=LABELS, gif_every=1, gif_max=120,
++        endurance_s=1500.0, reserve=0.25, zones=None, mission_time=None):
+     t_wall = time.time()
+     out = Path(out_root) / name
+     (out / "frames").mkdir(parents=True, exist_ok=True)
+@@ -632,8 +646,22 @@
+     mapper = Mapper(cam, merge_m)
+     wps, plan_info = Planner.coverage(bbox, cam, alt, overlap)
+     fw, fh = cam.footprint(alt)
++    plan_info["forward_overlap"] = round(max(0.0, 1 - speed * dt / fh), 3)
+     print(f"계획: 고도 {alt} m · 발자국 {fw:.1f}×{fh:.1f} m · GSD {cam.gsd(alt)*100:.1f} cm/px · 줄 {plan_info['lines']}개"
+-          f" (간격 {plan_info['spacing_m']:.1f} m) · 재방문 고도 {alt_low} m (GSD {cam.gsd(alt_low)*100:.1f} cm/px)")
++          f" (간격 {plan_info['spacing_m']:.1f} m, 횡 겹침 {overlap:.0%} · 전후 겹침 {plan_info['forward_overlap']:.0%})"
++          f" · 재방문 고도 {alt_low} m (GSD {cam.gsd(alt_low)*100:.1f} cm/px)")
++    # 비행 전 규정 점검: 영역 네 꼭짓점을 위경도로 바꿔 공역·야간·150 m 확인 (계획 단계에서 코드로)
++    airspace_rep = None
++    try:
++        from pyproj import Transformer
++        from . import airspace
++        inv0 = Transformer.from_crs(world.crs, 4326, always_xy=True)
++        corners = [inv0.transform(x, y)[::-1] for x, y in ((bbox[0], bbox[1]), (bbox[2], bbox[1]), (bbox[2], bbox[3]), (bbox[0], bbox[3]))]
++        airspace_rep = airspace.check_plan(corners, airspace.load_zones(zones), mission_time, alt_m=max(alt, alt_low))
++        print("비행 전 점검:" + ("" if zones else " (공역은 예시 데이터)"))
++        airspace.print_report(airspace_rep)
++    except Exception as e:   # 점검 실패가 시뮬을 막지는 않게
++        print(f"  ⚠️ 비행 전 점검 생략: {e}")
+     flight = FlightSim(wps[0][0], wps[0][1], alt, speed, dt, wind, gust, gps_noise=gps_noise, yaw_noise=yaw_noise, seed=seed)
+     rng = np.random.default_rng(seed + 1)
+     hud = HUD(world, bbox, cam, conf_lo, conf_hi)
+@@ -723,6 +751,8 @@
+         "detections_raw": len(mapper.rows), "objects_total": len(mapper.objects),
+         "revisits": n_rv, "revisit_log": rv_log, "eval": res,
+         "wall_time_s": round(time.time() - t_wall, 1), "detect_time_s": round(t_det, 1),
++        "mission": mission_metrics(flight.t, flight.dist, speed, dt, cam, alt, overlap, endurance_s, reserve),
++        "airspace": airspace_rep,
+     }
+     (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
+     with open(out / "detections.csv", "w", newline="", encoding="utf-8-sig") as f:
+@@ -752,6 +782,9 @@
+           f" (후보 포함 재현율 {e0['recall_incl_candidates']:.2f})")
+     print(f"  재방문 포함: 확정 {e1['confirmed']} · 후보 {e1['candidates']} · 기각 {e1['rejected']} · 재현율 {e1['recall']:.2f}"
+           f" · 정밀도 {e1['precision']:.2f} · 추가 비행 {summary['revisit_extra_dist_m']:.0f} m")
++    mm = summary["mission"]
++    print(f"  운용: 전후 겹침 {mm['forward_overlap']:.0%} · 횡 겹침 {mm['side_overlap']:.0%} · 비행 {flight.t:.0f} s"
++          f" → 배터리 {mm['battery_used_frac']*100:.0f}% (가용 {endurance_s:.0f} s, 예비 {reserve:.0%}) · 소티 {mm['sorties']}회")
+     print(f"  실행 {summary['wall_time_s']:.0f} s (탐지 {t_det:.0f} s) → {out}")
+     return summary
+ 
+@@ -784,10 +817,15 @@
+     ap.add_argument("--max_frames", type=int, default=1500)
+     ap.add_argument("--tol", type=float, default=1.0, help="라벨 적중 허용 거리 (m)")
+     ap.add_argument("--seed", type=int, default=0)
++    ap.add_argument("--endurance", type=float, default=1500.0, help="1회 비행 가능 시간 (s). Mini 5 Pro 공칭 36분 → 바람·저온 감안 25분")
++    ap.add_argument("--reserve", type=float, default=0.25, help="귀환 예비 배터리 비율")
++    ap.add_argument("--zones", help="공역 GeoJSON (없으면 예시 관제권 2개)")
++    ap.add_argument("--mission-time", dest="mission_time", help="계획 비행 시각 '2026-10-02 10:00' (야간 판정용, 현지)")
+     a = ap.parse_args(argv)
+     run(a.name, a.model, a.bbox, a.size, a.alt, a.alt_low, a.speed, a.dt, a.overlap, a.conf_lo, a.conf_hi, a.merge_m,
+         not a.no_revisit, a.rv_frames, tuple(a.wind), a.gust, a.jitter, a.gps_noise, a.yaw_noise,
+-        Camera(a.width, a.height, a.hfov), a.imgsz, a.max_frames, a.tol, a.seed)
++        Camera(a.width, a.height, a.hfov), a.imgsz, a.max_frames, a.tol, a.seed,
++        endurance_s=a.endurance, reserve=a.reserve, zones=a.zones, mission_time=a.mission_time)
+ 
+ 
+ if __name__ == "__main__":
+diff -ruN a/litter/solar.py b/litter/solar.py
+--- a/litter/solar.py	1970-01-01 00:00:00.000000000 +0000
++++ b/litter/solar.py	2026-10-01 18:28:59.704143691 +0000
+@@ -0,0 +1,101 @@
++"""
++태양 위치·일출/일몰 — NOAA 근사식 (외부 의존성 없음).
++
++쓰는 곳:
++  - airspace.py : 비행 시각이 야간(일몰 후~일출 전)인지 → 특별비행승인 대상 여부
++  - objvol.py   : 촬영 시각의 태양 고도로 물체 그림자 길이(= 높이 / tan 고도) 예상 → 발자국 과대 설명
++
++  >>> from litter.solar import solar_position, sun_times, local_to_utc
++  >>> t = local_to_utc("2026-10-01 15:15:09", tz_hours=9)
++  >>> elev, az = solar_position(t, 37.3843, 126.6571)      # 도, 방위각은 북 0° 시계방향
++
++정확도: 고도·방위 ±0.1° 수준 (대기 굴절 미보정). 야간 판정·그림자 길이에는 충분.
++"""
++import math
++from datetime import datetime, timedelta, timezone
++
++
++def local_to_utc(dt_str, tz_hours=9.0):
++    """'2026-10-01 15:15:09[.123]' (SRT의 현지 시각) → UNIX 초(UTC). 기본 KST(+9)."""
++    s = str(dt_str).strip().replace("T", " ").replace(",", ".").replace("/", "-")
++    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
++        try:
++            d = datetime.strptime(s, fmt)
++            break
++        except ValueError:
++            continue
++    else:
++        raise ValueError(f"시각 형식을 모름: {dt_str!r} (예: 2026-10-02 10:00)")
++    return d.replace(tzinfo=timezone(timedelta(hours=tz_hours))).timestamp()
++
++
++def _params(ts_utc):
++    """율리우스 세기 T → (이심률 e, 평균근점이각 M°, 평균황경 L0°, 적위 δ°, 균시차 EoT 분)."""
++    jd = ts_utc / 86400.0 + 2440587.5
++    T = (jd - 2451545.0) / 36525.0
++    L0 = (280.46646 + T * (36000.76983 + 0.0003032 * T)) % 360
++    M = 357.52911 + T * (35999.05029 - 0.0001537 * T)
++    e = 0.016708634 - T * (0.000042037 + 0.0000001267 * T)
++    Mr = math.radians(M)
++    C = ((1.914602 - T * (0.004817 + 0.000014 * T)) * math.sin(Mr)
++         + (0.019993 - 0.000101 * T) * math.sin(2 * Mr) + 0.000289 * math.sin(3 * Mr))
++    omega = math.radians(125.04 - 1934.136 * T)
++    lam = math.radians(L0 + C - 0.00569 - 0.00478 * math.sin(omega))
++    eps0 = 23 + (26 + (21.448 - T * (46.815 + T * (0.00059 - T * 0.001813))) / 60) / 60
++    eps = math.radians(eps0 + 0.00256 * math.cos(omega))
++    decl = math.degrees(math.asin(math.sin(eps) * math.sin(lam)))
++    y = math.tan(eps / 2) ** 2
++    L0r = math.radians(L0)
++    eot = 4 * math.degrees(y * math.sin(2 * L0r) - 2 * e * math.sin(Mr) + 4 * e * y * math.sin(Mr) * math.cos(2 * L0r)
++                           - 0.5 * y * y * math.sin(4 * L0r) - 1.25 * e * e * math.sin(2 * Mr))
++    return e, M, L0, decl, eot
++
++
++def solar_position(ts_utc, lat, lon):
++    """(고도각°, 방위각° 북0 시계방향). 고도각 < -0.833이면 태양이 지평선 아래(야간)."""
++    _, _, _, decl, eot = _params(ts_utc)
++    minutes = (ts_utc % 86400) / 60.0
++    tst = (minutes + eot + 4 * lon) % 1440
++    ha = tst / 4 - 180
++    if ha < -180:
++        ha += 360
++    latr, decr, har = math.radians(lat), math.radians(decl), math.radians(ha)
++    cos_z = math.sin(latr) * math.sin(decr) + math.cos(latr) * math.cos(decr) * math.cos(har)
++    zen = math.acos(max(-1.0, min(1.0, cos_z)))
++    elev = 90 - math.degrees(zen)
++    if math.sin(zen) < 1e-9:
++        return elev, 180.0
++    c = (math.sin(latr) * math.cos(zen) - math.sin(decr)) / (math.cos(latr) * math.sin(zen))
++    a = math.degrees(math.acos(max(-1.0, min(1.0, c))))
++    az = (a + 180) % 360 if ha > 0 else (540 - a) % 360
++    return elev, az
++
++
++def sun_times(date_ts_utc, lat, lon, zenith=90.833):
++    """해당 날짜의 일출·일몰 UNIX 초(UTC). zenith 96 = 시민박명. 극야/백야면 (None, None)."""
++    day0 = math.floor(date_ts_utc / 86400) * 86400
++    _, _, _, decl, eot = _params(day0 + 43200)
++    latr, decr = math.radians(lat), math.radians(decl)
++    c = math.cos(math.radians(zenith)) / (math.cos(latr) * math.cos(decr)) - math.tan(latr) * math.tan(decr)
++    if c < -1 or c > 1:
++        return None, None
++    ha0 = math.degrees(math.acos(c))
++    rise = 720 - 4 * (lon + ha0) - eot   # 분, UTC
++    sett = 720 - 4 * (lon - ha0) - eot
++    return day0 + rise * 60, day0 + sett * 60
++
++
++def is_night(ts_utc, lat, lon):
++    """항공안전법의 '야간' = 일몰 후 ~ 일출 전. 태양 고도 −0.833° 기준."""
++    return solar_position(ts_utc, lat, lon)[0] < -0.833
++
++
++def shadow_length(height_m, elev_deg):
++    """높이 h 물체의 그림자 길이. 태양 고도 3° 미만이면 None (무한대에 가까움)."""
++    if elev_deg is None or elev_deg < 3:
++        return None
++    return height_m / math.tan(math.radians(elev_deg))
++
++
++def fmt_local(ts_utc, tz_hours=9.0):
++    return datetime.fromtimestamp(ts_utc, timezone(timedelta(hours=tz_hours))).strftime("%Y-%m-%d %H:%M")
+diff -ruN a/litter/telemetry.py b/litter/telemetry.py
+--- a/litter/telemetry.py	2026-10-01 18:18:57.558076590 +0000
++++ b/litter/telemetry.py	2026-10-01 18:23:45.902268589 +0000
+@@ -110,6 +110,7 @@
+         if dt:
+             from datetime import datetime
+             s = dt[1].replace("T", " ").replace(",", ".")
++            rec["dt_str"] = s   # 현지 시각 원문 (시간대는 solar.local_to_utc 에서 지정 — 기계 시간대에 의존하지 않게)
+             try:
+                 rec["dt"] = datetime.strptime(s, "%Y-%m-%d %H:%M:%S.%f" if "." in s else "%Y-%m-%d %H:%M:%S").timestamp()
+             except ValueError:
+diff -ruN a/litter/video_map.py b/litter/video_map.py
+--- a/litter/video_map.py	2026-10-01 18:18:57.558091560 +0000
++++ b/litter/video_map.py	2026-10-01 18:23:46.444938494 +0000
+@@ -15,6 +15,7 @@
+   - 짐벌은 --pitch (기본 -90, 수직 아래)
+   - 방향은 이동 중이면 GPS 이동 방향으로 추정, 정지(호버링) 중이면 --yaw 값 (기본 0 = 북쪽)
+   → 방향이 틀리면 물체 위치가 드론 위치를 중심으로 회전한다 (고도 7 m면 최대 약 5 m).
++  - SRT에 gb_yaw/gb_pitch 가 있는 기종·펌웨어면 --srt-attitude 로 그 값을 쓴다 (이동방향 추정보다 정확).
+ """
+ import argparse
+ import base64
+@@ -47,7 +48,7 @@
+ 
+ 
+ def run(video, srt, out, weights, every_s=0.5, conf=0.35, pitch=-90.0, yaw=None, f35=24.0,
+-        min_alt=2.0, merge_m=1.5, tiles=2, classes=None, alt_fix=None):
++        min_alt=2.0, merge_m=1.5, tiles=2, classes=None, alt_fix=None, srt_attitude=False):
+     from ultralytics import YOLO
+ 
+     from .seg import _ios
+@@ -82,17 +83,23 @@
+         if not ok:
+             break
+         r = tel[k]
+-        # 방향: 이동 방향(최근 2초 이동 > 1.5 m) 또는 지정값
++        # 방향: SRT 자세(--srt-attitude, 있을 때) > 이동 방향(최근 2초 이동 > 1.5 m) > 지정값
+         k0, k1 = max(k - int(fps), 0), min(k + int(fps), len(tel) - 1)
+         mv = xy[k1] - xy[k0]
+-        if yaw is None and np.hypot(*mv) > 1.5:
++        pt = pitch
++        if srt_attitude and r.get("yaw") is not None:
++            yw = float(r["yaw"]) % 360
++            yaw_src.add("SRT(gb_yaw)")
++            if r.get("pitch") is not None:
++                pt = float(r["pitch"])
++        elif yaw is None and np.hypot(*mv) > 1.5:
+             yw = float(np.degrees(np.arctan2(mv[0], mv[1]))) % 360
+             yaw_src.add("이동방향")
+         else:
+             yw = yaw if yaw is not None else 0.0
+             yaw_src.add("지정값" if yaw is not None else "기본 0°(북)")
+         alt = alt_fix if alt_fix is not None else r["alt"]  # SRT 고도가 흘렀을 때 고정값 사용
+-        pose = Pose(xy[k, 0], xy[k, 1], alt, yw, pitch)
++        pose = Pose(xy[k, 0], xy[k, 1], alt, yw, pt)
+         # 타일 나눠 탐지 (4K에서 작은 물체)
+         tw, th = W // tiles, H // tiles
+         tl = [(x, y) for y in range(0, H, th) for x in range(0, W, tw)]
+@@ -198,9 +205,11 @@
+     ap.add_argument("--alt_fix", type=float, help="SRT 고도 대신 쓸 고정 고도 (m) — SRT가 음수로 흐를 때")
+     ap.add_argument("--merge_m", type=float, default=1.5, help="같은 물체로 묶는 거리 (m)")
+     ap.add_argument("--classes", help="YOLO-World용 클래스 이름 (쉼표 구분, 예: 'cardboard box,plastic bag')")
++    ap.add_argument("--srt-attitude", action="store_true", help="SRT에 gb_yaw/gb_pitch 가 있으면 이동방향 추정 대신 그 값을 사용")
+     a = ap.parse_args(argv)
+     classes = [c.strip() for c in a.classes.split(",")] if a.classes else None
+-    run(a.video, a.srt, a.out, a.weights, a.every, a.conf, a.pitch, a.yaw, a.f35, a.min_alt, merge_m=a.merge_m, classes=classes, alt_fix=a.alt_fix)
++    run(a.video, a.srt, a.out, a.weights, a.every, a.conf, a.pitch, a.yaw, a.f35, a.min_alt, merge_m=a.merge_m, classes=classes, alt_fix=a.alt_fix,
++        srt_attitude=a.srt_attitude)
+ 
+ 
+ if __name__ == "__main__":
+diff -ruN a/litter/volume.py b/litter/volume.py
+--- a/litter/volume.py	2026-10-01 18:18:57.558115748 +0000
++++ b/litter/volume.py	2026-10-01 18:23:46.050834711 +0000
+@@ -151,8 +151,11 @@
+     return cand[roots == r0]
+ 
+ 
+-def volume_heightmap(O, cell=None, agg="max"):
+-    """바닥 격자마다 최고 높이 → 빈칸은 발자국 안에서 보간 → Σ 높이 × 칸 넓이."""
++def volume_heightmap(O, cell=None, agg="max", erode_m=0.0):
++    """바닥 격자마다 최고 높이 → 빈칸은 발자국 안에서 보간 → Σ 높이 × 칸 넓이.
++    erode_m > 0: 발자국(볼록 껍질)을 그만큼 안쪽으로 줄인다 — 조밀 복원(MVS) 패치 창 때문에
++    물체 가장자리 점이 바깥으로 약 1 px 번지는 것을 되돌리는 용도 (objvol 이 GSD×px 로 넘김).
++    줄인 발자국이 비면 보정 없이 계산한다. 반환 (부피 m³, 발자국 m², 칸 크기 m)."""
+     from matplotlib.path import Path as MPath
+     from scipy.interpolate import griddata
+     from scipy.spatial import ConvexHull
+@@ -185,8 +188,19 @@
+     # 발자국: 물체 점들의 2D 볼록 껍질 안쪽 칸 (쓰레기 덩어리는 대체로 볼록)
+     gi, gj = np.mgrid[:W, :H]
+     centers = np.c_[(gi.ravel() + .5) * cell + lo[0], (gj.ravel() + .5) * cell + lo[1]]
+-    foot = poly.contains_points(centers).reshape(W, H) if poly is not None else ~np.isnan(hm)
+-    foot |= ~np.isnan(hm)
++    eroded = False
++    if erode_m > 0 and poly is not None:
++        try:
++            from shapely.geometry import Polygon as SPoly
++            hp = SPoly(xy[hull.vertices]).buffer(-float(erode_m))
++            if not hp.is_empty and hp.area > 0.2 * area:
++                foot = MPath(np.asarray(hp.exterior.coords)).contains_points(centers).reshape(W, H)
++                eroded = True
++        except Exception:
++            eroded = False
++    if not eroded:
++        foot = poly.contains_points(centers).reshape(W, H) if poly is not None else ~np.isnan(hm)
++        foot |= ~np.isnan(hm)
+     known = ~np.isnan(hm)
+     if known.sum() >= 4 and (foot & ~known).any():
+         ki, kj = np.nonzero(known)
+@@ -237,23 +251,39 @@
+     return out, Pm, idx
+ 
+ 
+-def to_metric_auto(P, C, D, alt_m, gps_xy=None, min_track_m=10.0):
++def to_metric_auto(P, C, D, alt_m, gps_xy=None, min_track_m=10.0, scale="auto", check_min_m=3.0):
+     """실제 크기 맞추기를 상황에 맞게 고른다.
+     - 기본: 카메라 높이 ↔ SRT 상대고도 (제자리 선회처럼 수평 이동이 작을 때)
+     - GPS 수평 이동이 min_track_m 이상이면: 3D 카메라 경로 ↔ GPS 경로로 축척을 다시 맞춘다
+-      (SRT 고도는 '이륙 지점 기준'이라, 이륙 지점이 바닥보다 높으면 크기가 통째로 틀어진다)"""
++      (SRT 고도는 '이륙 지점 기준'이라, 이륙 지점이 바닥보다 높으면 크기가 통째로 틀어진다)
++    scale: "auto"(위 규칙) | "alt"(항상 SRT 고도) | "gps"(항상 GPS 경로; 이동이 check_min_m 미만이면 고도로 되돌림)
++    교차검증: GPS 이동이 check_min_m 이상이면 선택과 무관하게 GPS 배율(gps_scale_factor_check)을 계산해 기록하고,
++      고도 기준과 25 % 이상 다르면 경고(scale_warning) — "SRT 고도가 틀렸다"를 사람이 눈치채기 전에 코드가 알려준다."""
+     T, R, s, info = to_metric(P, C, D, alt_m)
+     info["scale_source"] = "고도(SRT)"
++    info["scale_mode"] = scale
+     if gps_xy is None:
+         return T, R, s, info
+     G = np.asarray(gps_xy, float)
+-    if np.ptp(G, axis=0).max() < min_track_m:
++    extent = float(np.ptp(G, axis=0).max())
++    info["track_extent_m"] = extent
++    if extent < check_min_m or scale == "alt":
++        if scale == "gps":
++            info["scale_warning"] = f"GPS 이동 {extent:.1f} m < {check_min_m} m — GPS 축척 불가, 고도 기준 사용"
+         return T, R, s, info
+     A = T(C)[:, :2]
+     ca, cb = A.mean(0), G.mean(0)
+     U, S, Vt = np.linalg.svd((G - cb).T @ (A - ca))
+     d = np.sign(np.linalg.det(U @ Vt))
+     k = float((S * np.array([1, d])).sum() / ((A - ca) ** 2).sum())
++    info["gps_scale_factor_check"] = k   # 1.0이면 고도 기준과 GPS 경로가 일치
++    use_gps = scale == "gps" or (scale == "auto" and extent >= min_track_m)
++    if abs(k - 1) > 0.25:
++        info["scale_warning"] = (f"GPS 경로로 맞춘 배율 {k:.2f} — SRT 고도 기준과 {abs(k-1)*100:.0f}% 차이. "
++                                 + ("GPS 경로 축척 사용." if use_gps else
++                                    "SRT 상대고도(이륙점 기준)가 실제 지면고도와 다를 수 있음 → --scale gps 또는 --min-track 낮추기 권장."))
++    if not use_gps:
++        return T, R, s, info
+     p0 = info["p0"]
+     s2 = s * k
+ 
+diff -ruN a/docs/airspace/zones_sample.geojson b/docs/airspace/zones_sample.geojson
+--- a/docs/airspace/zones_sample.geojson	1970-01-01 00:00:00.000000000 +0000
++++ b/docs/airspace/zones_sample.geojson	2026-10-01 18:23:45.911220362 +0000
+@@ -0,0 +1,12 @@
++{
++  "type": "FeatureCollection",
++  "_comment": "예시 데이터. 관제권 반경 9.3 km(5 NM) 원을 Point+radius_m 로 표현. 실제 비행·발표 전 드론원스탑(drone.onestop.go.kr) 공식 공역으로 교체.",
++  "features": [
++    {"type": "Feature", "properties": {"name": "인천국제공항 관제권 (예시)", "kind": "관제권", "radius_m": 9300, "note": "예시"},
++     "geometry": {"type": "Point", "coordinates": [126.4407, 37.4602]}},
++    {"type": "Feature", "properties": {"name": "김포국제공항 관제권 (예시)", "kind": "관제권", "radius_m": 9300, "note": "예시"},
++     "geometry": {"type": "Point", "coordinates": [126.7906, 37.5583]}},
++    {"type": "Feature", "properties": {"name": "예시 비행제한구역 (폴리곤 형식 예)", "kind": "제한", "max_alt_m": 60, "note": "형식 예시 — 실제 구역 아님"},
++     "geometry": {"type": "Polygon", "coordinates": [[[126.60, 37.30], [126.62, 37.30], [126.62, 37.32], [126.60, 37.32], [126.60, 37.30]]]}}
++  ]
++}
