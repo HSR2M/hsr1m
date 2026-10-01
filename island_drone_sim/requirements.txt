@@ -1,0 +1,8 @@
+# gym-pybullet-drones(learnsyslab) 런타임 의존성만 (torch/stable-baselines3는 RL 학습용이라 제외)
+numpy
+scipy
+pybullet>=3.2.6
+gymnasium>=1.0
+matplotlib
+transforms3d
+pillow
