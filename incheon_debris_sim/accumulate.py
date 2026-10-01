@@ -115,10 +115,12 @@ def offshore_density(float_density, sigma=SIGMA_CELLS):
     return ndimage.gaussian_filter(float_density.astype(np.float32), sigma)
 
 
-def residual_convergence(dom, model, t0=0.0, cycles=2, dt=300.0):
-    """라그랑주 잔차류: 모든 물 셀에서 출발한 추적자의 조석 2주기 순변위 / 시간. 수렴 = -div."""
+def residual_convergence(dom, model, t0=0.0, cycles=2, dt=300.0, bbox=None):
+    """라그랑주 잔차류: (bbox 안의) 모든 물 셀에서 출발한 추적자의 조석 2주기 순변위 / 시간. 수렴 = -div."""
     from .currents import bilinear
-    g = dom["grid"]; w = dom["water"]
+    g = dom["grid"]; w = dom["water"].copy()
+    if bbox is not None:
+        w &= (g.LON >= bbox[0]) & (g.LON <= bbox[1]) & (g.LAT >= bbox[2]) & (g.LAT <= bbox[3])
     X, Y = g.X[w].astype(np.float64), g.Y[w].astype(np.float64)
     x, y = X.copy(), Y.copy()
     T = cycles * C.M2_PERIOD

@@ -9,6 +9,8 @@
 | `output/hotspot_map.png` | 최종 집적 예상 지도(빨간 반투명 라인 + 순위 + 잔차류 수렴역) |
 | `output/hotspots_ranked.json`, `output/hotspots.geojson` | 집적 예상 해안 순위 표와 GIS용 라인(GeoJSON, WGS84) |
 | `output/frame_*.png` | 영상 주요 장면 |
+| `output/gyodong_debris_simulation.mp4`, `output/seogeom_debris_simulation.mp4` | **섬 상세 영상**: 교동도·서검도 범위로 확대, 섬 자체 해안선 기준 집적 구간만 빨간 반투명 라인으로 표시 (100 m 격자, 200,000 입자) |
+| `output/hotspot_map_gyodong.png`, `output/hotspot_map_seogeom.png`, `output/hotspots_{gyodong,seogeom}_ranked.json`, `.geojson` | 섬별 집적 예상 지도·순위(8방위 구간)·GIS 라인 |
 
 > **중요:** 이 저장소의 영상은 인터넷이 차단된 환경에서 만들었기 때문에
 > (1) 배경은 실제 위성사진이 아니라 GSHHG 해안선으로 그린 *위성풍 모식 지도*이고,
@@ -84,6 +86,24 @@ render.py     1920×1080 30 fps 프레임(스트리크 유속장, 입자, 빨간
 강화 동안(염하수로), 김포 대명항·초지, 인천 서구 청라, 교동도·강화 서안(외포리)·석모도 서안 순으로 나왔습니다.
 외해 유입 입자는 덕적도·영흥도·장봉도 외측 해안에 좌초했습니다.
 
+## 3-1. 섬 상세 영상 (교동도 · 서검도)
+
+| 교동도 집적 예상 지도 | 서검도 집적 예상 지도 |
+|---|---|
+| ![](output/hotspot_map_gyodong.png) | ![](output/hotspot_map_seogeom.png) |
+
+| 교동도 영상 장면 | 서검도 영상 장면 |
+|---|---|
+| ![](output/frame_gyodong_01881.png) | ![](output/frame_seogeom_01881.png) |
+
+* 지역 전체 모의를 **100 m 격자 · 200,000 입자**로 다시 돌린 뒤(`simulate --dx 100 --n 200000`), 섬 주변(교동도 ±3 km, 서검도 ±2 km)으로 화면을 좁혀
+  같은 영상 구성(조류 흐름 → 30일 타임랩스 → 집적 예상 해안)으로 렌더링했습니다 (`incheon_debris_sim/make_island.py`, `island.py`).
+* 빨간 라인은 **그 섬 해안선만을 기준**으로 좌초 밀도 상위 30 % 구간이며, 구간 이름은 섬 중심 기준 8방위(북안·북서안·…)입니다.
+  이웃 섬·강화도 해안의 라인은 표시하지 않습니다.
+* 서검도(면적 1.4 km²)는 섬이 작아 격자(100 m)로는 ~20셀 폭이고 섬에 닿는 입자 수도 적어 결과의 통계적 신뢰도가 교동도보다 낮습니다.
+  정밀한 결과가 필요하면 섬 주변 50 m 격자의 둥지(nested) 모델과 실측 수심·해류가 필요합니다.
+* 다른 섬을 추가하려면 `island.py` 의 `ISLANDS` 에 이름·중심 좌표·여백만 넣으면 됩니다 (GSHHG 해안선에서 폴리곤을 자동으로 찾음).
+
 ## 4. 실행 방법
 
 ```bash
@@ -91,6 +111,10 @@ pip install -r requirements.txt          # basemap-data-hires (GSHHG) 와 NanumG
 python run_all.py                        # 지형 → 위성지도(가능하면) → 조류 → 입자추적 → 분석 → 영상
 ```
 단계별 실행: `python -m incheon_debris_sim.simulate` → `python -m incheon_debris_sim.render` (`--stills` 로 정지화면만).
+섬 상세: `python -m incheon_debris_sim.simulate --dx 100 --n 200000 --out output/sim_results_dx100.npz` →
+`python -m incheon_debris_sim.make_island gyodong seogeom` (또는 `python run_all.py --islands gyodong seogeom`).
+위성 배경을 섬 영상에도 쓰려면 `basemap.fetch_satellite_basemap(bbox=<섬 범위>, zoom=15, path="output/basemap_satellite_gyodong.png")` 처럼
+섬 범위 파일을 만들어 두면 자동으로 사용됩니다.
 설정은 모두 `incheon_debris_sim/config.py` 에 있습니다 (영역, 격자, 조석 진폭, 유량, 바람, 좌초 확률, 발생원, 지명).
 
 ### 실측 자료로 교체하기

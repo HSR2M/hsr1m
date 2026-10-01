@@ -101,10 +101,11 @@ def river_regions_ll(LON, LAT):
     return han | imjin
 
 
-def _widen_rivers(grid, land, cells=2):
-    """하천 구간의 물 셀을 cells 만큼 확장 (실제 한강 하류 폭 ~1 km, 수심 5 m 이상)."""
+def _widen_rivers(grid, land, widen_m=400.0):
+    """하천 구간의 물 셀을 양쪽으로 widen_m 만큼 확장 (실제 한강 하류 폭 ~1 km, 수심 5 m 이상)."""
     region = river_regions(grid)
     water = ~land
+    cells = max(1, int(round(widen_m / grid.dx)))
     wide = ndimage.binary_dilation(water & region, iterations=cells) & region
     return land & ~wide
 
