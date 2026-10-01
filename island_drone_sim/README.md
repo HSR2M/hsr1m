@@ -39,7 +39,8 @@ git clone -b claude/ecstatic-franklin-nhsyss https://github.com/HSR2M/hsr1m
 git clone https://github.com/learnsyslab/gym-pybullet-drones
 
 # 2) Miniforge 설치 (https://conda-forge.org/download/) 후 "Miniforge Prompt"에서
-conda create -n drones -c conda-forge python=3.12 pybullet numpy scipy gymnasium matplotlib pillow transforms3d ffmpeg -y
+conda create -n drones -c conda-forge python=3.12 pybullet numpy scipy gymnasium -y
+conda install -n drones -c conda-forge matplotlib pillow transforms3d ffmpeg -y
 conda activate drones
 python -m pip install --no-deps -e C:\dev\gym-pybullet-drones
 
@@ -70,9 +71,12 @@ python fly_island.py --island wolmido --gui        # PyBullet GUI로 직접 보�
 | `--radius` | 500 | 최고점 기준 선회 반경(m) |
 | `--speed` | 10 | 순항속도(m/s). cf2x PID는 10 m/s까지 안정, 15 m/s는 뒤집힘 |
 | `--climb_speed` | 3 | 이륙 수직상승 속도(m/s). 10 m/s로 올리면 수평 전환 때 뒤집힘 |
-| `--max_err` | 1.5 | 드론과 목표점 사이 최대 거리(m). 이보다 멀면 PID가 과도하게 기울어 추락 |
+| `--max_err` | 0.6 | PID에 넘기는 수평 위치오차 상한(m). 게인이 27 g 기체 기준이라 크면 과도하게 기울어 추락 |
+| `--max_err_z` | 0.08 | 수직 위치오차 상한(m). 수직 P 게인 1.25 N/m vs 무게 0.265 N이라 0.1 m만 넘어도 추력 역전 |
+| `--vel_tau` / `--max_vel_err` / `--max_vel_err_z` | 1.0 / 1.5 / 0.25 | 목표속도 저역통과 시정수(s)와 속도오차 상한(m/s). 경로가 꺾일 때 급변 방지 |
 | `--max_lag` | 8 | 드론이 경로점에 이보다 뒤처지면 경로점이 전진을 멈추고 기다림(m) |
 | `--video` | off | 추적 카메라 프레임 저장 후 ffmpeg로 mp4 생성 (프레임당 약 0.7 s) |
+| `--gui` / `--speedup` | off / 3 | PyBullet 창에서 실시간 보기. 카메라가 드론을 따라가며 `speedup` 배속으로 재생 |
 
 출력은 `results/<island>_path.csv`, `results/<island>_map.png`, `results/<island>_flight.mp4`.
 
@@ -117,6 +121,8 @@ python fly_island.py --island wolmido --gui        # PyBullet GUI로 직접 보�
 4. `fly_island.py`는 경로를 따라 "진행거리 s"를 속도 v로 전진시키고, 드론에서 `max_err` 이내로
    잘라낸 점을 `DSLPIDControl`에 목표로 준다. 속도는 `--accel`로 램프업하고, 상승 구간은
    `--climb_speed`로 따로 제한하며, 드론이 `--max_lag` 이상 뒤처지면 경로점이 기다린다.
+   PID 게인이 Crazyflie(27 g) 기준이라 위치·속도 오차를 축별로 작게 잘라 넘기지 않으면
+   경로가 꺾이는 곳에서 추력 벡터가 뒤집혀 추락한다(`--max_err_z`, `--max_vel_err_z`).
 5. 생성 고도와 지상고는 픽셀 고도가 아니라 heightfield 표면 레이캐스트(`Terrain.surface_z`)로
    구한다. 30 m/px 지형에서는 둘이 수 m 이상 차이 난다.
 
