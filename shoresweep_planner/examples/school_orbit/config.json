@@ -1,0 +1,38 @@
+{
+  "site": "학교 선회 시험 (0007 광장 · 0010 골목) — 3D 부피 검증",
+  "crs": "EPSG:32652",
+  "format": "objvol",
+  "id_prefix": "ORB",
+  "objvol": [
+    "0007/objvol.json",
+    "0010/objvol.json"
+  ],
+  "material": {
+    "0007:Plastic_Buoy_55": "cardboard",
+    "0007:Styrofoam_Buoy_22": "cardboard",
+    "0010:Styrofoam_Buoy_4": "cardboard",
+    "0010:Styrofoam_Buoy_3": "cardboard",
+    "0010:Styrofoam_Buoy_3_2": "cardboard",
+    "0010:Styrofoam_Buoy_3_3": "cardboard"
+  },
+  "survey_date": "2026-10-01 15:15 (0007 선회, 고도 7 m) · 17:17 (0010 골목 왕복, 높이 2 m)",
+  "depot": {
+    "lon": 126.657,
+    "lat": 37.3842,
+    "name": "광장 남서쪽(집결지)"
+  },
+  "ortho": "ortho/mosaic.jpg",
+  "terrain": {
+    "type": "none"
+  },
+  "zone_word": "구역",
+  "defaults": {
+    "workers": 2,
+    "hours": 2.0,
+    "link": 20,
+    "walk": 4.0,
+    "detour": 1.3
+  },
+  "description": "크기를 아는 상자(23×17×8, 60×45×12, 32×42×39 cm)를 선회·왕복 촬영해 3D 부피를 재고 정답과 비교. 오차 −10 ~ +20 %. 탐지 모델이 상자를 '스티로폼 부표'로 부른 것은 골판지 상자로 바로잡아 무게를 계산.",
+  "source": "runs/orbit/0007/objvol_v2, runs/map/0007_sfm (1 cm/px 모자이크), runs/orbit/0010x/objvol_v2, runs/map/0010"
+}

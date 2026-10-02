@@ -1,0 +1,16 @@
+# 가상환경 / 캐시
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.vscode/
+*.log
+
+# 결과물
+outputs/
+
+# 실제 현장 자료는 저장소에 넣지 않음 (README·예시 설정만 둠). 샘플은 examples/ 에 있음
+input/*
+!input/README.md
+!input/config.example.json

@@ -1,0 +1,13 @@
+{
+  "site": "학교 캠퍼스 (송도)",
+  "crs": "EPSG:5186",
+  "depot": {"lon": 126.6565, "lat": 37.3851, "name": "집결지"},
+  "survey_date": "2026-10-__ (드론 영상 번호 ____)",
+  "default_class": "cardboard",
+  "truth": {"default_cm": "42x32x39", "note": "크기를 아는 시험 물체를 뒀을 때만"},
+  "photo_pattern": "photos/{seq:02d}.jpg",
+  "zone_word": "구역",
+  "defaults": {"workers": 2, "hours": 2.0, "link": 25, "walk": 4.0, "detour": 1.3},
+  "_note": "objects3d.csv / objvol.json / summary.json / items.csv / objects.csv 중 있는 것을 자동으로 읽는다. shared 는 인터넷 공유용(선택)",
+  "shared_example": {"provider": "supabase", "url": "https://<project>.supabase.co", "anon_key": "<anon public key>", "table": "shared_state"}
+}
