@@ -89,6 +89,12 @@ def read_jpg(path):
     return rec
 
 
+def has_gps(rec):
+    """SRT 기록에 쓸 수 있는 위경도가 있나. 실내 비행이면 키가 없거나 0.000000 으로 찍힌다."""
+    lat, lon = rec.get("lat"), rec.get("lon")
+    return lat is not None and lon is not None and (abs(float(lat)) > 0.01 or abs(float(lon)) > 0.01)
+
+
 def read_srt(path):
     """DJI SRT → [{frame, t_ms, lat, lon, alt, yaw, pitch, roll}, ...].
     기종마다 표기가 조금씩 달라서 [key: value] 쌍을 전부 긁은 뒤 이름으로 고른다."""

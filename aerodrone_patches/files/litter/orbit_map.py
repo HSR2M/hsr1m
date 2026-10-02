@@ -21,7 +21,7 @@ import numpy as np
 from .geometry import Geo
 from .orbit3d import _center, _viewdir
 from .seg import _imread, _imwrite
-from .telemetry import read_srt
+from .telemetry import has_gps, read_srt
 from .video_map import OBSTACLE, _map_html, _thumb
 from .volume import to_metric, to_metric_auto
 
@@ -39,7 +39,10 @@ def fit_rigid2d(A, B):
     return Rt, t, float(np.sqrt(np.mean(res ** 2)))
 
 
-def run(orbit_dir, srt, out, litter_w, obstacle_w=None, conf=0.3, merge_m=0.5, min_hits=3, classes=None, min_track_m=10.0, scale="auto"):
+def run(orbit_dir, srt, out, litter_w, obstacle_w=None, conf=0.3, merge_m=0.5, min_hits=3, classes=None, min_track_m=10.0, scale="auto",
+        origin=None, alt_offset=0.0):
+    """origin=(lat, lon): SRT에 GPS가 없을 때(실내 시연·GPS 불량) 3D 좌표계를 이 지점에 그대로 올린다 (회전 없음, 고도 축척).
+    alt_offset: SRT 상대고도에서 뺄 값(m). 바닥에서 이륙해 탁자 위 모형을 돌면 탁자 높이를 넣는다 (상대고도는 이륙점 기준)."""
     import pycolmap
     from ultralytics import YOLO
 
@@ -48,20 +51,34 @@ def run(orbit_dir, srt, out, litter_w, obstacle_w=None, conf=0.3, merge_m=0.5, m
     rec = pycolmap.Reconstruction(str(orbit_dir / "sparse" / "0"))
     imgs = sorted(rec.images.values(), key=lambda i: i.name)
     fidx = json.loads((orbit_dir / "frames" / "frames.json").read_text(encoding="utf-8"))
-    tel = {r["frame"]: r for r in read_srt(srt) if "lat" in r}
+    tel = {r["frame"]: r for r in read_srt(srt)}
+    recs = [tel[fidx[i.name]] for i in imgs]
+    gps_ok = origin is None and all(has_gps(r) for r in recs)
+    if not gps_ok and origin is None:
+        raise SystemExit("SRT에 위경도가 없음(실내 비행?) → --origin LAT,LON 으로 지도 기준점을 주면 GPS 없이 진행합니다")
     P = np.array([p.xyz for p in rec.points3D.values()])
     C = np.array([_center(i) for i in imgs])
     D = np.array([_viewdir(i) for i in imgs])
-    alt = np.array([tel[fidx[i.name]]["alt"] for i in imgs])
-    geo = Geo(None, lon=tel[fidx[imgs[0].name]]["lon"])
-    gps = np.array([geo.to_xy(tel[fidx[i.name]]["lat"], tel[fidx[i.name]]["lon"]) for i in imgs])
+    alt = np.array([float(r["alt"]) for r in recs]) - alt_offset
+    if gps_ok:
+        geo = Geo(None, lon=recs[0]["lon"])
+        gps = np.array([geo.to_xy(r["lat"], r["lon"]) for r in recs])
+    else:
+        geo = Geo(None, lon=origin[1])
+        gps = None
     T, Rg, s, info = to_metric_auto(P, C, D, alt, gps, min_track_m=min_track_m, scale=scale)
     if info.get("scale_warning"):
         print(f"  ⚠️ 축척: {info['scale_warning']}")
     Cm = T(C)
-    R2, t2, rms = fit_rigid2d(Cm[:, :2], gps)
-    to_map = lambda q: np.asarray(q)[..., :2] @ R2.T + t2
-    print(f"3D ↔ GPS 맞춤: 카메라 {len(imgs)}대 · 잔차 {rms:.2f} m · 크기 기준 {info.get('scale_source')} · 고도 축척 편차 {info['scale_spread_pct']:.1f}%")
+    if gps_ok:
+        R2, t2, rms = fit_rigid2d(Cm[:, :2], gps)
+        to_map = lambda q: np.asarray(q)[..., :2] @ R2.T + t2
+        print(f"3D ↔ GPS 맞춤: 카메라 {len(imgs)}대 · 잔차 {rms:.2f} m · 크기 기준 {info.get('scale_source')} · 고도 축척 편차 {info['scale_spread_pct']:.1f}%")
+    else:
+        t2 = np.asarray(geo.to_xy(origin[0], origin[1]), float)
+        to_map = lambda q: np.asarray(q)[..., :2] + t2
+        print(f"GPS 없음 → 3D 좌표를 기준점 {origin[0]:.6f},{origin[1]:.6f} 에 그대로 올림 (방위 임의) · 카메라 {len(imgs)}대"
+              f" · 크기 기준 {info.get('scale_source')} 편차 {info['scale_spread_pct']:.1f}% · 고도 보정 {alt_offset:+.2f} m")
 
     cam = rec.cameras[imgs[0].camera_id]
     models = [("litter", YOLO(str(litter_w)))] + ([("obstacle", YOLO(str(obstacle_w)))] if obstacle_w else [])
@@ -122,8 +139,11 @@ def run(orbit_dir, srt, out, litter_w, obstacle_w=None, conf=0.3, merge_m=0.5, m
         o["local"] = g
         mx, my = to_map(g)
         o["lat"], o["lon"] = geo.to_latlon(mx, my)
-    track = [[tel[f]["lat"], tel[f]["lon"], tel[f]["alt"]] for f in sorted(tel)[::15]]
-    _map_html(out / "map.html", track, objs, {"3D 복원 카메라 방향"}, "3D 추정")
+    if gps_ok:
+        track = [[tel[f]["lat"], tel[f]["lon"], tel[f]["alt"]] for f in sorted(tel) if has_gps(tel[f])][::15]
+    else:   # 실내: 3D 카메라 경로를 기준점에 올린 것
+        track = [[*geo.to_latlon(*to_map(c)), float(c[2])] for c in Cm[::max(1, len(Cm) // 60)]]
+    _map_html(out / "map.html", track, objs, {"3D 복원 카메라 방향" if gps_ok else f"GPS 없음·기준점 {origin}"}, "3D 추정")
     with open(out / "objects.csv", "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         w.writerow(["kind", "cls", "lat", "lon", "seen_frames", "best_score", "local_x_m", "local_y_m"])
@@ -170,9 +190,13 @@ def main(argv=None):
     ap.add_argument("--min-track", type=float, default=10.0, help="GPS 수평 이동이 이 거리(m) 이상이면 GPS 경로로 축척 (SRT 고도가 틀릴 때 낮춰서 강제)")
     ap.add_argument("--scale", default="auto", choices=["auto", "alt", "gps"],
                     help="축척 출처: auto(이동 거리로 자동) / alt(SRT 상대고도) / gps(GPS 경로 강제). 고도·GPS가 25%% 이상 다르면 경고가 뜬다")
+    ap.add_argument("--origin", help="'LAT,LON' — SRT에 GPS가 없을 때(실내 시연) 3D 좌표를 올릴 지도 기준점 (예: 문갑도 37.2186,126.1150)")
+    ap.add_argument("--alt-offset", type=float, default=0.0, help="SRT 상대고도에서 뺄 값 m (바닥 이륙·탁자 위 모형이면 탁자 높이)")
     a = ap.parse_args(argv)
+    origin = tuple(float(v) for v in a.origin.split(",")) if a.origin else None
     run(a.orbit, a.srt, a.out, a.litter, a.obstacle, a.conf,
-        classes=[c.strip() for c in a.classes.split(",")] if a.classes else None, min_track_m=a.min_track, scale=a.scale)
+        classes=[c.strip() for c in a.classes.split(",")] if a.classes else None, min_track_m=a.min_track, scale=a.scale,
+        origin=origin, alt_offset=a.alt_offset)
 
 
 if __name__ == "__main__":

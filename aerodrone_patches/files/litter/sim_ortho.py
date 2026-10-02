@@ -22,6 +22,8 @@ ROS 2/Gazebo로 옮길 수 있게 역할을 클래스로 분리했다:
   python -m litter.sim_ortho --name demo                       # 라벨 밀집 100×100 m 자동 선택
   python -m litter.sim_ortho --name demo --model aihub --bbox 120820 508000 120920 508100
   python -m litter.sim_ortho --name demo --no-revisit         # 커버리지만
+  python -m litter.sim_ortho --name judge1 --model aihub --manual --device 0 --hide-labels
+                                                                 # 심사위원이 키보드로 직접 비행 (WASD 이동·Q/E 기수·R/F 고도·V AI 재방문·ESC 종료)
 
 결과: runs/sim/<name>/ map.png · map.html · flight.mp4 · flight.gif · detections.csv · objects.csv · summary.json
 """
@@ -211,6 +213,20 @@ class FlightSim:
             self.track.append((self.t, self.x, self.y, self.alt, phase))
             yield self._pose()
 
+    def nudge(self, dx=0.0, dy=0.0, dalt=0.0, dyaw=0.0, phase="coverage", bounds=None, alt_range=(3.0, 80.0)):
+        """수동 조종 한 스텝 (키보드). bounds=(xmin,ymin,xmax,ymax) 밖으로는 못 나간다(지오펜스)."""
+        nx, ny = self.x + dx, self.y + dy
+        if bounds:
+            nx = min(max(nx, bounds[0]), bounds[2])
+            ny = min(max(ny, bounds[1]), bounds[3])
+        self.dist += math.hypot(nx - self.x, ny - self.y) + abs(dalt)
+        self.x, self.y = nx, ny
+        self.alt = min(max(self.alt + dalt, alt_range[0]), alt_range[1])
+        self.yaw = (self.yaw + dyaw) % 360
+        self.t += self.dt
+        self.track.append((self.t, self.x, self.y, self.alt, phase))
+        return self._pose()
+
     def hover(self, n, phase="revisit", wander_m=0.8):
         """제자리 촬영 n장 — 매번 조금씩 옮기고(wander_m) 기수를 돌려서 다른 시점으로 본다."""
         x0, y0 = self.x, self.y
@@ -231,17 +247,17 @@ class FlightSim:
 class Detector:
     """YOLO 탐지 — **CPU 고정** (GPU는 COLMAP 등 다른 작업이 쓰는 중)."""
 
-    def __init__(self, weights, conf=0.25, imgsz=1024, threads=4):
+    def __init__(self, weights, conf=0.25, imgsz=1024, threads=4, device="cpu"):
         import torch
         from ultralytics import YOLO
 
         torch.set_num_threads(threads)
         self.m = YOLO(str(weights))
         self.names = self.m.names
-        self.conf, self.imgsz = conf, imgsz
+        self.conf, self.imgsz, self.device = conf, imgsz, device   # 수동 비행 시연은 --device 0 으로 GPU (프레임률↑)
 
     def __call__(self, frame):
-        r = self.m.predict(frame, conf=self.conf, imgsz=self.imgsz, device="cpu", verbose=False)[0]
+        r = self.m.predict(frame, conf=self.conf, imgsz=self.imgsz, device=self.device, verbose=False)[0]
         if r.boxes is None or len(r.boxes) == 0:
             return []
         out = []
@@ -625,7 +641,10 @@ def run(name, model="uavvaste", bbox=None, size=100.0, alt=20.0, alt_low=8.0, sp
         overlap=0.3, conf_lo=0.25, conf_hi=0.5, merge_m=1.0, revisit=True, rv_frames=3, wind=(0.0, 0.0),
         gust=0.0, jitter=0.3, gps_noise=0.0, yaw_noise=1.0, cam=None, imgsz=1024, max_frames=1500,
         tol_m=1.0, seed=0, out_root=ROOT / "runs" / "sim", ortho=ORTHO, labels_path=LABELS, gif_every=1, gif_max=120,
-        endurance_s=1500.0, reserve=0.25, zones=None, mission_time=None):
+        endurance_s=1500.0, reserve=0.25, zones=None, mission_time=None, manual=False, device="cpu", hide_labels=False,
+        window="LITTER SIM"):
+    """manual=True: 계획 경로 대신 키보드로 비행(시연용). 창에 드론 시점+미니맵이 실시간으로 뜨고, V를 누르면
+    그때까지의 애매한 후보를 AI가 저고도로 재방문한다. hide_labels=True면 미니맵에 업체 정답 라벨을 숨긴다(심사위원용)."""
     t_wall = time.time()
     out = Path(out_root) / name
     (out / "frames").mkdir(parents=True, exist_ok=True)
@@ -642,7 +661,7 @@ def run(name, model="uavvaste", bbox=None, size=100.0, alt=20.0, alt_low=8.0, sp
     print(f"영역 {bbox[2]-bbox[0]:.0f}×{bbox[3]-bbox[1]:.0f} m  E {bbox[0]:.1f}~{bbox[2]:.1f} N {bbox[1]:.1f}~{bbox[3]:.1f}"
           f" · 업체 라벨 {len(labels)}개 · 모델 {weights.name if weights.exists() else model} (CPU)")
 
-    det = Detector(weights, conf=conf_lo, imgsz=imgsz)
+    det = Detector(weights, conf=conf_lo, imgsz=imgsz, device=device)
     mapper = Mapper(cam, merge_m)
     wps, plan_info = Planner.coverage(bbox, cam, alt, overlap)
     fw, fh = cam.footprint(alt)
@@ -662,7 +681,9 @@ def run(name, model="uavvaste", bbox=None, size=100.0, alt=20.0, alt_low=8.0, sp
         airspace.print_report(airspace_rep)
     except Exception as e:   # 점검 실패가 시뮬을 막지는 않게
         print(f"  ⚠️ 비행 전 점검 생략: {e}")
-    flight = FlightSim(wps[0][0], wps[0][1], alt, speed, dt, wind, gust, gps_noise=gps_noise, yaw_noise=yaw_noise, seed=seed)
+    start = ((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2) if manual else wps[0]
+    flight = FlightSim(start[0], start[1], alt, speed, dt, wind, gust, gps_noise=gps_noise, yaw_noise=yaw_noise, seed=seed)
+    labels_hud = [] if hide_labels else labels
     rng = np.random.default_rng(seed + 1)
     hud = HUD(world, bbox, cam, conf_lo, conf_hi)
     vw = cv2.VideoWriter(str(out / "flight.mp4"), cv2.VideoWriter_fourcc(*"mp4v"), 4, (cam.width, cam.height))
@@ -686,7 +707,7 @@ def run(name, model="uavvaste", bbox=None, size=100.0, alt=20.0, alt_low=8.0, sp
             mapper.update(frame_id, phase, pose, frame, dets)
         if phase != "transit":
             footprints.append(cam.footprint_poly(pose))
-        vis = hud.draw(frame, pose, dets, phase, flight.track, mapper.objects, labels, frame_id, n_rv)
+        vis = hud.draw(frame, pose, dets, phase, flight.track, mapper.objects, labels_hud, frame_id, n_rv)
         vw.write(vis)
         if phase != "transit" and frame_id % gif_every == 0:   # GIF는 탐지 프레임만 (이동 구간 제외)
             gif_frames.append(cv2.resize(vis, (480, 360), interpolation=cv2.INTER_AREA)[:, :, ::-1])
@@ -694,37 +715,102 @@ def run(name, model="uavvaste", bbox=None, size=100.0, alt=20.0, alt_low=8.0, sp
             _imwrite(out / "frames" / f"f{frame_id:04d}_{phase}.jpg", vis, 80)
         frames_meta.append({"frame": frame_id, "phase": phase, "t": round(pose.t, 1), "x": round(pose.x, 2),
                             "y": round(pose.y, 2), "alt": round(pose.alt, 1), "yaw": round(pose.yaw, 1), "n_det": len(dets)})
-        return frame, dets
+        return frame, dets, vis
+
+    def show(vis, wait_ms=1):
+        """수동 모드 창 갱신. 반환: 눌린 키 (없으면 -1)."""
+        cv2.imshow(window, vis)
+        return cv2.waitKey(wait_ms) & 0xFF
+
+    def revisit_round(live=False):
+        """지금까지의 애매한 후보(conf_lo~conf_hi)를 저고도로 재방문해 확정/기각. live=True면 창에도 그린다."""
+        nonlocal n_rv
+        cands = Planner.order_revisits(mapper.candidates(conf_lo, conf_hi), (flight.x, flight.y))
+        if live and not cands:
+            print("  재방문할 후보 없음")
+        for o in cands:
+            o.revisited = True
+            n_rv += 1
+            for pose in flight.fly_to((o.x, o.y), alt, "transit"):
+                *_, vis = capture(pose, "transit", do_detect=False)
+                if live:
+                    show(vis)
+            for pose in flight.fly_to((o.x, o.y), alt_low, "transit"):   # 하강
+                *_, vis = capture(pose, "transit", do_detect=False)
+                if live:
+                    show(vis)
+            before = o.cov_max
+            for pose in flight.hover(rv_frames, "revisit"):
+                *_, vis = capture(pose, "revisit")
+                if live:
+                    show(vis, 150)
+            for pose in flight.fly_to((o.x, o.y), alt, "transit"):       # 상승
+                *_, vis = capture(pose, "transit", do_detect=False)
+                if live:
+                    show(vis)
+            st = o.status(conf_lo, conf_hi)
+            rv_log.append({"oid": o.oid, "x": round(o.x, 2), "y": round(o.y, 2), "cov_max": round(before, 3),
+                           "rv_max": round(o.rv_max, 3), "result": st})
+            print(f"  재방문 #{o.oid} ({o.cls}) 커버리지 {before:.2f} → 저고도 {max(o.rv_max, 0):.2f} ⇒ {st}")
 
     stop = False
-    for k, wp in enumerate(wps):
-        if stop:
-            break
-        for pose in flight.fly_to(wp, alt, "coverage"):
-            capture(pose, "coverage")
-            if frame_id >= max_frames:
-                print(f"  ⚠️ 최대 프레임 {max_frames} 도달 — 중단")
-                stop = True
+    if manual:
+        # ---- 수동 비행 (시연): 키를 누를 때마다 한 스텝 이동·촬영·탐지. 키가 없으면 마지막 화면만 유지
+        margin = 10.0
+        fence = (bbox[0] - margin, bbox[1] - margin, bbox[2] + margin, bbox[3] + margin)
+        step = speed * dt
+        help_txt = "W/A/S/D 이동   Q/E 기수 회전   R/F 상승/하강   V: AI 재방문   H: 호버 촬영   ESC: 종료"
+        cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+        *_, vis = capture(flight._pose(), "coverage")
+        key = show(_put_text(vis, help_txt, (10, cam.height - 34), 18))
+        print("수동 비행 시작 — " + help_txt)
+        while frame_id < max_frames:
+            th = math.radians(flight.yaw)
+            fwd = (math.sin(th) * step, math.cos(th) * step)      # 기수 방향 (북 0°, 시계방향)
+            rgt = (math.cos(th) * step, -math.sin(th) * step)
+            moved = True
+            if key == 27:
                 break
-        # 줄 끝(k 홀수)마다 애매한 후보를 끼워넣어 저고도 재방문
-        if revisit and k % 2 == 1 and not stop:
-            cands = Planner.order_revisits(mapper.candidates(conf_lo, conf_hi), (flight.x, flight.y))
-            for o in cands:
-                o.revisited = True
-                n_rv += 1
-                for pose in flight.fly_to((o.x, o.y), alt, "transit"):
-                    capture(pose, "transit", do_detect=False)
-                for pose in flight.fly_to((o.x, o.y), alt_low, "transit"):   # 하강
-                    capture(pose, "transit", do_detect=False)
-                before = o.cov_max
-                for pose in flight.hover(rv_frames, "revisit"):
-                    capture(pose, "revisit")
-                for pose in flight.fly_to((o.x, o.y), alt, "transit"):       # 상승
-                    capture(pose, "transit", do_detect=False)
-                st = o.status(conf_lo, conf_hi)
-                rv_log.append({"oid": o.oid, "x": round(o.x, 2), "y": round(o.y, 2), "cov_max": round(before, 3),
-                               "rv_max": round(o.rv_max, 3), "result": st})
-                print(f"  재방문 #{o.oid} ({o.cls}) 커버리지 {before:.2f} → 저고도 {max(o.rv_max, 0):.2f} ⇒ {st}")
+            elif key in (ord("w"), ord("W")):
+                pose = flight.nudge(*fwd, bounds=fence, alt_range=(alt_low, 80.0))
+            elif key in (ord("s"), ord("S")):
+                pose = flight.nudge(-fwd[0], -fwd[1], bounds=fence, alt_range=(alt_low, 80.0))
+            elif key in (ord("a"), ord("A")):
+                pose = flight.nudge(-rgt[0], -rgt[1], bounds=fence, alt_range=(alt_low, 80.0))
+            elif key in (ord("d"), ord("D")):
+                pose = flight.nudge(*rgt, bounds=fence, alt_range=(alt_low, 80.0))
+            elif key in (ord("q"), ord("Q")):
+                pose = flight.nudge(dyaw=-15, bounds=fence, alt_range=(alt_low, 80.0))
+            elif key in (ord("e"), ord("E")):
+                pose = flight.nudge(dyaw=15, bounds=fence, alt_range=(alt_low, 80.0))
+            elif key in (ord("r"), ord("R")):
+                pose = flight.nudge(dalt=2.0, bounds=fence, alt_range=(alt_low, 80.0))
+            elif key in (ord("f"), ord("F")):
+                pose = flight.nudge(dalt=-2.0, bounds=fence, alt_range=(alt_low, 80.0))
+            elif key in (ord("h"), ord("H")):
+                pose = flight.nudge(bounds=fence, alt_range=(alt_low, 80.0))
+            elif key in (ord("v"), ord("V")):
+                revisit_round(live=True)
+                moved = False
+            else:
+                moved = False
+            if moved:
+                *_, vis = capture(pose, "coverage")
+            key = show(_put_text(vis, help_txt, (10, cam.height - 34), 18), 1 if moved else 30)
+        cv2.destroyWindow(window)
+    else:
+        for k, wp in enumerate(wps):
+            if stop:
+                break
+            for pose in flight.fly_to(wp, alt, "coverage"):
+                capture(pose, "coverage")
+                if frame_id >= max_frames:
+                    print(f"  ⚠️ 최대 프레임 {max_frames} 도달 — 중단")
+                    stop = True
+                    break
+            # 줄 끝(k 홀수)마다 애매한 후보를 끼워넣어 저고도 재방문
+            if revisit and k % 2 == 1 and not stop:
+                revisit_round()
     vw.release()
     if gif_frames:
         import imageio
@@ -739,7 +825,7 @@ def run(name, model="uavvaste", bbox=None, size=100.0, alt=20.0, alt_low=8.0, sp
     cov_track = [t for t in flight.track if t[4] == "coverage"]
     dist_cov = float(sum(math.hypot(b[1] - a[1], b[2] - a[2]) for a, b in zip(cov_track, cov_track[1:])))
     summary = {
-        "name": name, "model": str(weights), "device": "cpu", "bbox_epsg5186": list(bbox),
+        "name": name, "model": str(weights), "device": device, "manual": manual, "bbox_epsg5186": list(bbox),
         "area_m2": float(B.area), "covered_m2": float(cover.area), "coverage_frac": float(cover.area / B.area),
         "alt_m": alt, "alt_revisit_m": alt_low, "gsd_cm": round(cam.gsd(alt) * 100, 2),
         "gsd_revisit_cm": round(cam.gsd(alt_low) * 100, 2), "camera": {"w": cam.width, "h": cam.height, "hfov": cam.hfov_deg},
@@ -821,11 +907,15 @@ def main(argv=None):
     ap.add_argument("--reserve", type=float, default=0.25, help="귀환 예비 배터리 비율")
     ap.add_argument("--zones", help="공역 GeoJSON (없으면 예시 관제권 2개)")
     ap.add_argument("--mission-time", dest="mission_time", help="계획 비행 시각 '2026-10-02 10:00' (야간 판정용, 현지)")
+    ap.add_argument("--manual", action="store_true", help="키보드로 직접 비행 (시연). 창: WASD 이동·Q/E 기수·R/F 고도·V AI 재방문·ESC 종료")
+    ap.add_argument("--device", default="cpu", help="YOLO 장치: cpu / 0 (GPU). 수동 시연은 GPU 권장")
+    ap.add_argument("--hide-labels", dest="hide_labels", action="store_true", help="미니맵에서 업체 정답 라벨 숨김 (심사위원이 볼 때)")
     a = ap.parse_args(argv)
     run(a.name, a.model, a.bbox, a.size, a.alt, a.alt_low, a.speed, a.dt, a.overlap, a.conf_lo, a.conf_hi, a.merge_m,
         not a.no_revisit, a.rv_frames, tuple(a.wind), a.gust, a.jitter, a.gps_noise, a.yaw_noise,
         Camera(a.width, a.height, a.hfov), a.imgsz, a.max_frames, a.tol, a.seed,
-        endurance_s=a.endurance, reserve=a.reserve, zones=a.zones, mission_time=a.mission_time)
+        endurance_s=a.endurance, reserve=a.reserve, zones=a.zones, mission_time=a.mission_time,
+        manual=a.manual, device=a.device, hide_labels=a.hide_labels)
 
 
 if __name__ == "__main__":

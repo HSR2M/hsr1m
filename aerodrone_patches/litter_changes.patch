@@ -524,7 +524,7 @@ diff -ruN a/litter/fromvideo.py b/litter/fromvideo.py
          p.add_argument("--out", required=True)
 diff -ruN a/litter/objvol.py b/litter/objvol.py
 --- a/litter/objvol.py	2026-10-01 18:18:57.557852452 +0000
-+++ b/litter/objvol.py	2026-10-01 18:25:45.057773371 +0000
++++ b/litter/objvol.py	2026-10-02 01:46:00.158163000 +0000
 @@ -17,6 +17,14 @@
    - 뒤집힌 카메라(평면 위 0.3 m 미만, 기울기 85° 초과) 제외. 수직에 가까운(nadir ≥ 0.7) 프레임이 없으면 마스크면적은 null
    - --device cpu 로 GPU 없이 SAM 실행 가능
@@ -540,42 +540,66 @@ diff -ruN a/litter/objvol.py b/litter/objvol.py
    python -m litter.objvol --orbit runs/orbit/0007 --srt DJI_0007.SRT --ply dense/fused.ply \
           --objects runs/map/0007_sfm/objects.csv --select "Plastic_Buoy:55,Styrofoam_Buoy:22" --out runs/orbit/0007/objvol
  """
-@@ -32,6 +40,7 @@
+@@ -30,8 +38,9 @@
+ 
+ from .orbit3d import _center, _viewdir
  from .seg import _imread, _imwrite
- from .telemetry import read_srt
+-from .telemetry import read_srt
++from .telemetry import has_gps, read_srt
  from .volume import fit_ground, to_metric, to_metric_auto, volume_heightmap, volume_hull
 +from . import solar
  
  
  def read_ply(path):
-@@ -55,7 +64,7 @@
+@@ -55,7 +64,8 @@
  
  
  class Scene:
 -    def __init__(self, orbit_dir, srt, min_track_m=10.0):
-+    def __init__(self, orbit_dir, srt, min_track_m=10.0, scale="auto", tz_hours=9.0):
++    def __init__(self, orbit_dir, srt, min_track_m=10.0, scale="auto", tz_hours=9.0, origin=None, alt_offset=0.0):
++        """origin=(lat, lon): SRT에 GPS가 없을 때(실내 시연) 지도 기준점. alt_offset: 상대고도에서 뺄 탁자 높이 등(m)."""
          import pycolmap
  
          self.dir = Path(orbit_dir)
-@@ -71,8 +80,16 @@
+@@ -64,15 +74,33 @@
+         self.cam = self.rec.cameras[self.imgs[0].camera_id]
+         fidx = json.loads((self.dir / "frames" / "frames.json").read_text(encoding="utf-8"))
+         tel = {r["frame"]: r for r in read_srt(srt)}
++        recs = [tel[fidx[i.name]] for i in self.imgs]
++        gps_ok = origin is None and all(has_gps(r) for r in recs)
++        if not gps_ok and origin is None:
++            raise SystemExit("SRT에 위경도가 없음(실내 비행?) → --origin LAT,LON 으로 기준점을 주면 GPS 없이 진행합니다")
+         P = np.array([p.xyz for p in self.rec.points3D.values()])
+         C = np.array([_center(i) for i in self.imgs])
+         D = np.array([_viewdir(i) for i in self.imgs])
+-        alt = np.array([tel[fidx[i.name]]["alt"] for i in self.imgs])
++        alt = np.array([float(r["alt"]) for r in recs]) - alt_offset
          from .geometry import Geo
-         geo = Geo(None, lon=tel[fidx[self.imgs[0].name]]["lon"])
-         gps = np.array([geo.to_xy(tel[fidx[i.name]]["lat"], tel[fidx[i.name]]["lon"]) for i in self.imgs])
+-        geo = Geo(None, lon=tel[fidx[self.imgs[0].name]]["lon"])
+-        gps = np.array([geo.to_xy(tel[fidx[i.name]]["lat"], tel[fidx[i.name]]["lon"]) for i in self.imgs])
 -        self.T, self.R, self.s, self.info = to_metric_auto(P, C, D, alt, gps, min_track_m=min_track_m)
++        if gps_ok:
++            geo = Geo(None, lon=recs[0]["lon"])
++            gps = np.array([geo.to_xy(r["lat"], r["lon"]) for r in recs])
++        else:
++            gps = None
 +        self.T, self.R, self.s, self.info = to_metric_auto(P, C, D, alt, gps, min_track_m=min_track_m, scale=scale)
++        self.info["gps_available"] = gps_ok
 +        if self.info.get("scale_warning"):
 +            print(f"⚠️ 축척: {self.info['scale_warning']}")
++        if not gps_ok:
++            print(f"GPS 없음 → 기준점 {origin} · 고도 축척(상대고도 {alt_offset:+.2f} m 보정)")
          self.p0 = self.info["p0"]
 +        # 촬영 위치·시각 (태양 고도 → 그림자 길이 설명용). SRT에 시각이 없으면 None
-+        self.lat = float(np.median([tel[fidx[i.name]]["lat"] for i in self.imgs]))
-+        self.lon = float(np.median([tel[fidx[i.name]]["lon"] for i in self.imgs]))
++        self.lat = float(np.median([r["lat"] for r in recs])) if gps_ok else float(origin[0])
++        self.lon = float(np.median([r["lon"] for r in recs])) if gps_ok else float(origin[1])
 +        self.tz_hours = tz_hours
 +        ts = [solar.local_to_utc(tel[fidx[i.name]]["dt_str"], tz_hours) for i in self.imgs if tel[fidx[i.name]].get("dt_str")]
 +        self.t_utc = float(np.median(ts)) if ts else None
          self.sparse = P
          self.D = D
          self.Cm = self.T(C)                      # 카메라 중심 (지면 좌표, m)
-@@ -96,6 +113,20 @@
+@@ -96,6 +124,20 @@
          k = self.imgs.index(im)
          return float(-self.Dm[k, 2])  # 1 = 수직 아래
  
@@ -596,7 +620,7 @@ diff -ruN a/litter/objvol.py b/litter/objvol.py
  
  def fit_plane(Q, thr=0.02, iters=300, max_n=20000, rng=None):
      """지역 바닥 평면 z = a·x + b·y + c (RANSAC → 인라이어 최소제곱 2회). 반환 (coef, 인라이어 비율).
-@@ -189,9 +220,11 @@
+@@ -189,9 +231,11 @@
  
  
  def measure_object(sc, sam, center_xy, Pm, n_views=24, search_r=0.8, vote=0.7, h_min=0.03, height="mode", hm_agg="median",
@@ -610,7 +634,7 @@ diff -ruN a/litter/objvol.py b/litter/objvol.py
      center0 = np.asarray(center_xy, float)
  
      def local(cxy):
-@@ -245,7 +278,7 @@
+@@ -245,7 +289,7 @@
      views = views[::max(1, len(views) // n_views)][:n_views]
      inside = np.zeros(len(X))
      seen = np.zeros(len(X))
@@ -619,7 +643,7 @@ diff -ruN a/litter/objvol.py b/litter/objvol.py
      for _, im, uv, k in views:
          img = _imread(sc.dir / "frames" / im.name)
          box = pick_box(det(img), uv) if det else None
-@@ -254,6 +287,7 @@
+@@ -254,6 +298,7 @@
              continue
          used += 1
          n_box_prompt += box is not None
@@ -627,7 +651,7 @@ diff -ruN a/litter/objvol.py b/litter/objvol.py
          used_names.append(im.name)
          used_tilts.append(float(sc.tilt_deg[k]))
          p = sc.project(im, X)
-@@ -296,7 +330,12 @@
+@@ -296,7 +341,12 @@
             "center_xy": [float(center[0]), float(center[1])], "center_shift_m": float(np.linalg.norm(center - center0)),
             "ground_z": gz, "ground_plane_tilt_deg": tilt_plane, "ground_plane_inlier": inl,
             "height_method": height, "h_min": h_min,
@@ -641,7 +665,7 @@ diff -ruN a/litter/objvol.py b/litter/objvol.py
      if len(O) >= 10:
          h_p90 = float(np.percentile(O[:, 2], 90))
          h_mode = height_mode(O[:, 2])
-@@ -318,6 +357,16 @@
+@@ -318,6 +368,16 @@
                     footprint_m2=foot, hm_agg=hm_agg, volume_heightmap_L=(v_med if hm_agg == "median" else v_max) * 1000,
                     volume_heightmap_median_L=v_med * 1000, volume_heightmap_max_L=v_max * 1000,
                     volume_hull_L=volume_hull(O) * 1000)
@@ -658,7 +682,7 @@ diff -ruN a/litter/objvol.py b/litter/objvol.py
          if best_area:
              res.update(mask_area_m2=best_area[0], volume_mask_box_L=best_area[0] * h_top * 1000,
                         mask_nadir_score=best_area[1])
-@@ -348,6 +397,11 @@
+@@ -348,6 +408,13 @@
      ap.add_argument("--det-weights", help="탐지 모델(예: yolov8s-worldv2.pt) — 탐지 상자를 SAM 프롬프트로 (상자가 크게 찍힐 때 필수)")
      ap.add_argument("--det-classes", help="YOLO-World 클래스 이름 (쉼표 구분)")
      ap.add_argument("--det-conf", type=float, default=0.25)
@@ -667,15 +691,18 @@ diff -ruN a/litter/objvol.py b/litter/objvol.py
 +    ap.add_argument("--edge-erode-px", type=float, default=1.0, help="조밀 복원 경계 번짐 보정 폭(px). 0 = 보정 부피 생략")
 +    ap.add_argument("--dense-px", type=int, default=1200, help="조밀 복원에 쓴 max_image_size (GSD 계산용; 빠른 설정 1200, 기본 1600)")
 +    ap.add_argument("--tz", type=float, default=9.0, help="SRT 시각의 시간대 (태양 고도 계산용, KST 9)")
++    ap.add_argument("--origin", help="'LAT,LON' — SRT에 GPS가 없을 때(실내 시연) 기준점. orbit_map 과 같은 값을 줄 것")
++    ap.add_argument("--alt-offset", type=float, default=0.0, help="SRT 상대고도에서 뺄 값 m (바닥 이륙·탁자 위 모형이면 탁자 높이)")
      a = ap.parse_args(argv)
      det = None
      if a.det_weights:
-@@ -359,12 +413,17 @@
+@@ -359,12 +426,18 @@
          det = lambda img: ym.predict(img, conf=a.det_conf, imgsz=1600, verbose=False, **dkw)[0].boxes.xyxy.cpu().numpy()
      out = Path(a.out)
      out.mkdir(parents=True, exist_ok=True)
 -    sc = Scene(a.orbit, a.srt, min_track_m=a.min_track)
-+    sc = Scene(a.orbit, a.srt, min_track_m=a.min_track, scale=a.scale, tz_hours=a.tz)
++    origin = tuple(float(v) for v in a.origin.split(",")) if a.origin else None
++    sc = Scene(a.orbit, a.srt, min_track_m=a.min_track, scale=a.scale, tz_hours=a.tz, origin=origin, alt_offset=a.alt_offset)
      pts = read_ply(a.ply)[0] if a.ply else sc.sparse
      Pm = sc.T(pts).astype(np.float32)   # 지면 좌표(m)로 한 번만 변환
      del pts
@@ -691,7 +718,7 @@ diff -ruN a/litter/objvol.py b/litter/objvol.py
      sam = SAM("sam2.1_b.pt")
      objs = list(csv.DictReader(open(a.objects, encoding="utf-8-sig")))
      sel = [tuple(s.split(":")) for s in a.select.split(",")] if a.select else None
-@@ -380,7 +439,8 @@
+@@ -380,7 +453,8 @@
          seen_tags[base] = seen_tags.get(base, 0) + 1
          tag = base if seen_tags[base] == 1 else f"{base}_{seen_tags[base]}"  # 같은 클래스·프레임수가 여럿이면 _2, _3
          r, _ = measure_object(sc, sam, (float(o["local_x_m"]), float(o["local_y_m"])), Pm, n_views=a.n_views, search_r=a.search_r,
@@ -701,7 +728,7 @@ diff -ruN a/litter/objvol.py b/litter/objvol.py
          r["lat"], r["lon"] = o["lat"], o["lon"]
          r["csv_local_xy"] = [float(o["local_x_m"]), float(o["local_y_m"])]
          if base in truth:
-@@ -401,6 +461,10 @@
+@@ -401,6 +475,10 @@
                  msg += f" · 마스크면적 {r['mask_area_m2']:.3f} m² × 높이 = {r['volume_mask_box_L']:.1f} L"
              else:
                  msg += " · 마스크면적 없음(수직 프레임 없음)"
@@ -714,44 +741,157 @@ diff -ruN a/litter/objvol.py b/litter/objvol.py
          print(msg)
 diff -ruN a/litter/orbit_map.py b/litter/orbit_map.py
 --- a/litter/orbit_map.py	2026-10-01 18:18:57.557897967 +0000
-+++ b/litter/orbit_map.py	2026-10-01 18:25:44.905179881 +0000
-@@ -39,7 +39,7 @@
++++ b/litter/orbit_map.py	2026-10-02 01:46:00.157382360 +0000
+@@ -21,7 +21,7 @@
+ from .geometry import Geo
+ from .orbit3d import _center, _viewdir
+ from .seg import _imread, _imwrite
+-from .telemetry import read_srt
++from .telemetry import has_gps, read_srt
+ from .video_map import OBSTACLE, _map_html, _thumb
+ from .volume import to_metric, to_metric_auto
+ 
+@@ -39,7 +39,10 @@
      return Rt, t, float(np.sqrt(np.mean(res ** 2)))
  
  
 -def run(orbit_dir, srt, out, litter_w, obstacle_w=None, conf=0.3, merge_m=0.5, min_hits=3, classes=None, min_track_m=10.0):
-+def run(orbit_dir, srt, out, litter_w, obstacle_w=None, conf=0.3, merge_m=0.5, min_hits=3, classes=None, min_track_m=10.0, scale="auto"):
++def run(orbit_dir, srt, out, litter_w, obstacle_w=None, conf=0.3, merge_m=0.5, min_hits=3, classes=None, min_track_m=10.0, scale="auto",
++        origin=None, alt_offset=0.0):
++    """origin=(lat, lon): SRT에 GPS가 없을 때(실내 시연·GPS 불량) 3D 좌표계를 이 지점에 그대로 올린다 (회전 없음, 고도 축척).
++    alt_offset: SRT 상대고도에서 뺄 값(m). 바닥에서 이륙해 탁자 위 모형을 돌면 탁자 높이를 넣는다 (상대고도는 이륙점 기준)."""
      import pycolmap
      from ultralytics import YOLO
  
-@@ -55,7 +55,9 @@
-     alt = np.array([tel[fidx[i.name]]["alt"] for i in imgs])
-     geo = Geo(None, lon=tel[fidx[imgs[0].name]]["lon"])
-     gps = np.array([geo.to_xy(tel[fidx[i.name]]["lat"], tel[fidx[i.name]]["lon"]) for i in imgs])
+@@ -48,18 +51,34 @@
+     rec = pycolmap.Reconstruction(str(orbit_dir / "sparse" / "0"))
+     imgs = sorted(rec.images.values(), key=lambda i: i.name)
+     fidx = json.loads((orbit_dir / "frames" / "frames.json").read_text(encoding="utf-8"))
+-    tel = {r["frame"]: r for r in read_srt(srt) if "lat" in r}
++    tel = {r["frame"]: r for r in read_srt(srt)}
++    recs = [tel[fidx[i.name]] for i in imgs]
++    gps_ok = origin is None and all(has_gps(r) for r in recs)
++    if not gps_ok and origin is None:
++        raise SystemExit("SRT에 위경도가 없음(실내 비행?) → --origin LAT,LON 으로 지도 기준점을 주면 GPS 없이 진행합니다")
+     P = np.array([p.xyz for p in rec.points3D.values()])
+     C = np.array([_center(i) for i in imgs])
+     D = np.array([_viewdir(i) for i in imgs])
+-    alt = np.array([tel[fidx[i.name]]["alt"] for i in imgs])
+-    geo = Geo(None, lon=tel[fidx[imgs[0].name]]["lon"])
+-    gps = np.array([geo.to_xy(tel[fidx[i.name]]["lat"], tel[fidx[i.name]]["lon"]) for i in imgs])
 -    T, Rg, s, info = to_metric_auto(P, C, D, alt, gps, min_track_m=min_track_m)
++    alt = np.array([float(r["alt"]) for r in recs]) - alt_offset
++    if gps_ok:
++        geo = Geo(None, lon=recs[0]["lon"])
++        gps = np.array([geo.to_xy(r["lat"], r["lon"]) for r in recs])
++    else:
++        geo = Geo(None, lon=origin[1])
++        gps = None
 +    T, Rg, s, info = to_metric_auto(P, C, D, alt, gps, min_track_m=min_track_m, scale=scale)
 +    if info.get("scale_warning"):
 +        print(f"  ⚠️ 축척: {info['scale_warning']}")
      Cm = T(C)
-     R2, t2, rms = fit_rigid2d(Cm[:, :2], gps)
-     to_map = lambda q: np.asarray(q)[..., :2] @ R2.T + t2
-@@ -166,9 +168,11 @@
+-    R2, t2, rms = fit_rigid2d(Cm[:, :2], gps)
+-    to_map = lambda q: np.asarray(q)[..., :2] @ R2.T + t2
+-    print(f"3D ↔ GPS 맞춤: 카메라 {len(imgs)}대 · 잔차 {rms:.2f} m · 크기 기준 {info.get('scale_source')} · 고도 축척 편차 {info['scale_spread_pct']:.1f}%")
++    if gps_ok:
++        R2, t2, rms = fit_rigid2d(Cm[:, :2], gps)
++        to_map = lambda q: np.asarray(q)[..., :2] @ R2.T + t2
++        print(f"3D ↔ GPS 맞춤: 카메라 {len(imgs)}대 · 잔차 {rms:.2f} m · 크기 기준 {info.get('scale_source')} · 고도 축척 편차 {info['scale_spread_pct']:.1f}%")
++    else:
++        t2 = np.asarray(geo.to_xy(origin[0], origin[1]), float)
++        to_map = lambda q: np.asarray(q)[..., :2] + t2
++        print(f"GPS 없음 → 3D 좌표를 기준점 {origin[0]:.6f},{origin[1]:.6f} 에 그대로 올림 (방위 임의) · 카메라 {len(imgs)}대"
++              f" · 크기 기준 {info.get('scale_source')} 편차 {info['scale_spread_pct']:.1f}% · 고도 보정 {alt_offset:+.2f} m")
+ 
+     cam = rec.cameras[imgs[0].camera_id]
+     models = [("litter", YOLO(str(litter_w)))] + ([("obstacle", YOLO(str(obstacle_w)))] if obstacle_w else [])
+@@ -120,8 +139,11 @@
+         o["local"] = g
+         mx, my = to_map(g)
+         o["lat"], o["lon"] = geo.to_latlon(mx, my)
+-    track = [[tel[f]["lat"], tel[f]["lon"], tel[f]["alt"]] for f in sorted(tel)[::15]]
+-    _map_html(out / "map.html", track, objs, {"3D 복원 카메라 방향"}, "3D 추정")
++    if gps_ok:
++        track = [[tel[f]["lat"], tel[f]["lon"], tel[f]["alt"]] for f in sorted(tel) if has_gps(tel[f])][::15]
++    else:   # 실내: 3D 카메라 경로를 기준점에 올린 것
++        track = [[*geo.to_latlon(*to_map(c)), float(c[2])] for c in Cm[::max(1, len(Cm) // 60)]]
++    _map_html(out / "map.html", track, objs, {"3D 복원 카메라 방향" if gps_ok else f"GPS 없음·기준점 {origin}"}, "3D 추정")
+     with open(out / "objects.csv", "w", newline="", encoding="utf-8-sig") as f:
+         w = csv.writer(f)
+         w.writerow(["kind", "cls", "lat", "lon", "seen_frames", "best_score", "local_x_m", "local_y_m"])
+@@ -166,9 +188,15 @@
      ap.add_argument("--conf", type=float, default=0.3)
      ap.add_argument("--classes", help="YOLO-World용 클래스 이름 (쉼표 구분)")
      ap.add_argument("--min-track", type=float, default=10.0, help="GPS 수평 이동이 이 거리(m) 이상이면 GPS 경로로 축척 (SRT 고도가 틀릴 때 낮춰서 강제)")
 +    ap.add_argument("--scale", default="auto", choices=["auto", "alt", "gps"],
 +                    help="축척 출처: auto(이동 거리로 자동) / alt(SRT 상대고도) / gps(GPS 경로 강제). 고도·GPS가 25%% 이상 다르면 경고가 뜬다")
++    ap.add_argument("--origin", help="'LAT,LON' — SRT에 GPS가 없을 때(실내 시연) 3D 좌표를 올릴 지도 기준점 (예: 문갑도 37.2186,126.1150)")
++    ap.add_argument("--alt-offset", type=float, default=0.0, help="SRT 상대고도에서 뺄 값 m (바닥 이륙·탁자 위 모형이면 탁자 높이)")
      a = ap.parse_args(argv)
++    origin = tuple(float(v) for v in a.origin.split(",")) if a.origin else None
      run(a.orbit, a.srt, a.out, a.litter, a.obstacle, a.conf,
 -        classes=[c.strip() for c in a.classes.split(",")] if a.classes else None, min_track_m=a.min_track)
-+        classes=[c.strip() for c in a.classes.split(",")] if a.classes else None, min_track_m=a.min_track, scale=a.scale)
++        classes=[c.strip() for c in a.classes.split(",")] if a.classes else None, min_track_m=a.min_track, scale=a.scale,
++        origin=origin, alt_offset=a.alt_offset)
  
  
  if __name__ == "__main__":
 diff -ruN a/litter/sim_ortho.py b/litter/sim_ortho.py
 --- a/litter/sim_ortho.py	2026-10-01 18:18:57.558016448 +0000
-+++ b/litter/sim_ortho.py	2026-10-01 18:25:45.206991831 +0000
-@@ -608,10 +608,24 @@
++++ b/litter/sim_ortho.py	2026-10-02 01:46:00.292444317 +0000
+@@ -22,6 +22,8 @@
+   python -m litter.sim_ortho --name demo                       # 라벨 밀집 100×100 m 자동 선택
+   python -m litter.sim_ortho --name demo --model aihub --bbox 120820 508000 120920 508100
+   python -m litter.sim_ortho --name demo --no-revisit         # 커버리지만
++  python -m litter.sim_ortho --name judge1 --model aihub --manual --device 0 --hide-labels
++                                                                 # 심사위원이 키보드로 직접 비행 (WASD 이동·Q/E 기수·R/F 고도·V AI 재방문·ESC 종료)
+ 
+ 결과: runs/sim/<name>/ map.png · map.html · flight.mp4 · flight.gif · detections.csv · objects.csv · summary.json
+ """
+@@ -211,6 +213,20 @@
+             self.track.append((self.t, self.x, self.y, self.alt, phase))
+             yield self._pose()
+ 
++    def nudge(self, dx=0.0, dy=0.0, dalt=0.0, dyaw=0.0, phase="coverage", bounds=None, alt_range=(3.0, 80.0)):
++        """수동 조종 한 스텝 (키보드). bounds=(xmin,ymin,xmax,ymax) 밖으로는 못 나간다(지오펜스)."""
++        nx, ny = self.x + dx, self.y + dy
++        if bounds:
++            nx = min(max(nx, bounds[0]), bounds[2])
++            ny = min(max(ny, bounds[1]), bounds[3])
++        self.dist += math.hypot(nx - self.x, ny - self.y) + abs(dalt)
++        self.x, self.y = nx, ny
++        self.alt = min(max(self.alt + dalt, alt_range[0]), alt_range[1])
++        self.yaw = (self.yaw + dyaw) % 360
++        self.t += self.dt
++        self.track.append((self.t, self.x, self.y, self.alt, phase))
++        return self._pose()
++
+     def hover(self, n, phase="revisit", wander_m=0.8):
+         """제자리 촬영 n장 — 매번 조금씩 옮기고(wander_m) 기수를 돌려서 다른 시점으로 본다."""
+         x0, y0 = self.x, self.y
+@@ -231,17 +247,17 @@
+ class Detector:
+     """YOLO 탐지 — **CPU 고정** (GPU는 COLMAP 등 다른 작업이 쓰는 중)."""
+ 
+-    def __init__(self, weights, conf=0.25, imgsz=1024, threads=4):
++    def __init__(self, weights, conf=0.25, imgsz=1024, threads=4, device="cpu"):
+         import torch
+         from ultralytics import YOLO
+ 
+         torch.set_num_threads(threads)
+         self.m = YOLO(str(weights))
+         self.names = self.m.names
+-        self.conf, self.imgsz = conf, imgsz
++        self.conf, self.imgsz, self.device = conf, imgsz, device   # 수동 비행 시연은 --device 0 으로 GPU (프레임률↑)
+ 
+     def __call__(self, frame):
+-        r = self.m.predict(frame, conf=self.conf, imgsz=self.imgsz, device="cpu", verbose=False)[0]
++        r = self.m.predict(frame, conf=self.conf, imgsz=self.imgsz, device=self.device, verbose=False)[0]
+         if r.boxes is None or len(r.boxes) == 0:
+             return []
+         out = []
+@@ -608,10 +624,27 @@
  
  
  # ================================================================ 메인 루프
@@ -773,17 +913,26 @@ diff -ruN a/litter/sim_ortho.py b/litter/sim_ortho.py
          gust=0.0, jitter=0.3, gps_noise=0.0, yaw_noise=1.0, cam=None, imgsz=1024, max_frames=1500,
 -        tol_m=1.0, seed=0, out_root=ROOT / "runs" / "sim", ortho=ORTHO, labels_path=LABELS, gif_every=1, gif_max=120):
 +        tol_m=1.0, seed=0, out_root=ROOT / "runs" / "sim", ortho=ORTHO, labels_path=LABELS, gif_every=1, gif_max=120,
-+        endurance_s=1500.0, reserve=0.25, zones=None, mission_time=None):
++        endurance_s=1500.0, reserve=0.25, zones=None, mission_time=None, manual=False, device="cpu", hide_labels=False,
++        window="LITTER SIM"):
++    """manual=True: 계획 경로 대신 키보드로 비행(시연용). 창에 드론 시점+미니맵이 실시간으로 뜨고, V를 누르면
++    그때까지의 애매한 후보를 AI가 저고도로 재방문한다. hide_labels=True면 미니맵에 업체 정답 라벨을 숨긴다(심사위원용)."""
      t_wall = time.time()
      out = Path(out_root) / name
      (out / "frames").mkdir(parents=True, exist_ok=True)
-@@ -632,8 +646,22 @@
+@@ -628,13 +661,29 @@
+     print(f"영역 {bbox[2]-bbox[0]:.0f}×{bbox[3]-bbox[1]:.0f} m  E {bbox[0]:.1f}~{bbox[2]:.1f} N {bbox[1]:.1f}~{bbox[3]:.1f}"
+           f" · 업체 라벨 {len(labels)}개 · 모델 {weights.name if weights.exists() else model} (CPU)")
+ 
+-    det = Detector(weights, conf=conf_lo, imgsz=imgsz)
++    det = Detector(weights, conf=conf_lo, imgsz=imgsz, device=device)
      mapper = Mapper(cam, merge_m)
      wps, plan_info = Planner.coverage(bbox, cam, alt, overlap)
      fw, fh = cam.footprint(alt)
 +    plan_info["forward_overlap"] = round(max(0.0, 1 - speed * dt / fh), 3)
      print(f"계획: 고도 {alt} m · 발자국 {fw:.1f}×{fh:.1f} m · GSD {cam.gsd(alt)*100:.1f} cm/px · 줄 {plan_info['lines']}개"
 -          f" (간격 {plan_info['spacing_m']:.1f} m) · 재방문 고도 {alt_low} m (GSD {cam.gsd(alt_low)*100:.1f} cm/px)")
+-    flight = FlightSim(wps[0][0], wps[0][1], alt, speed, dt, wind, gust, gps_noise=gps_noise, yaw_noise=yaw_noise, seed=seed)
 +          f" (간격 {plan_info['spacing_m']:.1f} m, 횡 겹침 {overlap:.0%} · 전후 겹침 {plan_info['forward_overlap']:.0%})"
 +          f" · 재방문 고도 {alt_low} m (GSD {cam.gsd(alt_low)*100:.1f} cm/px)")
 +    # 비행 전 규정 점검: 영역 네 꼭짓점을 위경도로 바꿔 공역·야간·150 m 확인 (계획 단계에서 코드로)
@@ -798,10 +947,162 @@ diff -ruN a/litter/sim_ortho.py b/litter/sim_ortho.py
 +        airspace.print_report(airspace_rep)
 +    except Exception as e:   # 점검 실패가 시뮬을 막지는 않게
 +        print(f"  ⚠️ 비행 전 점검 생략: {e}")
-     flight = FlightSim(wps[0][0], wps[0][1], alt, speed, dt, wind, gust, gps_noise=gps_noise, yaw_noise=yaw_noise, seed=seed)
++    start = ((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2) if manual else wps[0]
++    flight = FlightSim(start[0], start[1], alt, speed, dt, wind, gust, gps_noise=gps_noise, yaw_noise=yaw_noise, seed=seed)
++    labels_hud = [] if hide_labels else labels
      rng = np.random.default_rng(seed + 1)
      hud = HUD(world, bbox, cam, conf_lo, conf_hi)
-@@ -723,6 +751,8 @@
+     vw = cv2.VideoWriter(str(out / "flight.mp4"), cv2.VideoWriter_fourcc(*"mp4v"), 4, (cam.width, cam.height))
+@@ -658,7 +707,7 @@
+             mapper.update(frame_id, phase, pose, frame, dets)
+         if phase != "transit":
+             footprints.append(cam.footprint_poly(pose))
+-        vis = hud.draw(frame, pose, dets, phase, flight.track, mapper.objects, labels, frame_id, n_rv)
++        vis = hud.draw(frame, pose, dets, phase, flight.track, mapper.objects, labels_hud, frame_id, n_rv)
+         vw.write(vis)
+         if phase != "transit" and frame_id % gif_every == 0:   # GIF는 탐지 프레임만 (이동 구간 제외)
+             gif_frames.append(cv2.resize(vis, (480, 360), interpolation=cv2.INTER_AREA)[:, :, ::-1])
+@@ -666,37 +715,102 @@
+             _imwrite(out / "frames" / f"f{frame_id:04d}_{phase}.jpg", vis, 80)
+         frames_meta.append({"frame": frame_id, "phase": phase, "t": round(pose.t, 1), "x": round(pose.x, 2),
+                             "y": round(pose.y, 2), "alt": round(pose.alt, 1), "yaw": round(pose.yaw, 1), "n_det": len(dets)})
+-        return frame, dets
++        return frame, dets, vis
++
++    def show(vis, wait_ms=1):
++        """수동 모드 창 갱신. 반환: 눌린 키 (없으면 -1)."""
++        cv2.imshow(window, vis)
++        return cv2.waitKey(wait_ms) & 0xFF
++
++    def revisit_round(live=False):
++        """지금까지의 애매한 후보(conf_lo~conf_hi)를 저고도로 재방문해 확정/기각. live=True면 창에도 그린다."""
++        nonlocal n_rv
++        cands = Planner.order_revisits(mapper.candidates(conf_lo, conf_hi), (flight.x, flight.y))
++        if live and not cands:
++            print("  재방문할 후보 없음")
++        for o in cands:
++            o.revisited = True
++            n_rv += 1
++            for pose in flight.fly_to((o.x, o.y), alt, "transit"):
++                *_, vis = capture(pose, "transit", do_detect=False)
++                if live:
++                    show(vis)
++            for pose in flight.fly_to((o.x, o.y), alt_low, "transit"):   # 하강
++                *_, vis = capture(pose, "transit", do_detect=False)
++                if live:
++                    show(vis)
++            before = o.cov_max
++            for pose in flight.hover(rv_frames, "revisit"):
++                *_, vis = capture(pose, "revisit")
++                if live:
++                    show(vis, 150)
++            for pose in flight.fly_to((o.x, o.y), alt, "transit"):       # 상승
++                *_, vis = capture(pose, "transit", do_detect=False)
++                if live:
++                    show(vis)
++            st = o.status(conf_lo, conf_hi)
++            rv_log.append({"oid": o.oid, "x": round(o.x, 2), "y": round(o.y, 2), "cov_max": round(before, 3),
++                           "rv_max": round(o.rv_max, 3), "result": st})
++            print(f"  재방문 #{o.oid} ({o.cls}) 커버리지 {before:.2f} → 저고도 {max(o.rv_max, 0):.2f} ⇒ {st}")
+ 
+     stop = False
+-    for k, wp in enumerate(wps):
+-        if stop:
+-            break
+-        for pose in flight.fly_to(wp, alt, "coverage"):
+-            capture(pose, "coverage")
+-            if frame_id >= max_frames:
+-                print(f"  ⚠️ 최대 프레임 {max_frames} 도달 — 중단")
+-                stop = True
++    if manual:
++        # ---- 수동 비행 (시연): 키를 누를 때마다 한 스텝 이동·촬영·탐지. 키가 없으면 마지막 화면만 유지
++        margin = 10.0
++        fence = (bbox[0] - margin, bbox[1] - margin, bbox[2] + margin, bbox[3] + margin)
++        step = speed * dt
++        help_txt = "W/A/S/D 이동   Q/E 기수 회전   R/F 상승/하강   V: AI 재방문   H: 호버 촬영   ESC: 종료"
++        cv2.namedWindow(window, cv2.WINDOW_NORMAL)
++        *_, vis = capture(flight._pose(), "coverage")
++        key = show(_put_text(vis, help_txt, (10, cam.height - 34), 18))
++        print("수동 비행 시작 — " + help_txt)
++        while frame_id < max_frames:
++            th = math.radians(flight.yaw)
++            fwd = (math.sin(th) * step, math.cos(th) * step)      # 기수 방향 (북 0°, 시계방향)
++            rgt = (math.cos(th) * step, -math.sin(th) * step)
++            moved = True
++            if key == 27:
++                break
++            elif key in (ord("w"), ord("W")):
++                pose = flight.nudge(*fwd, bounds=fence, alt_range=(alt_low, 80.0))
++            elif key in (ord("s"), ord("S")):
++                pose = flight.nudge(-fwd[0], -fwd[1], bounds=fence, alt_range=(alt_low, 80.0))
++            elif key in (ord("a"), ord("A")):
++                pose = flight.nudge(-rgt[0], -rgt[1], bounds=fence, alt_range=(alt_low, 80.0))
++            elif key in (ord("d"), ord("D")):
++                pose = flight.nudge(*rgt, bounds=fence, alt_range=(alt_low, 80.0))
++            elif key in (ord("q"), ord("Q")):
++                pose = flight.nudge(dyaw=-15, bounds=fence, alt_range=(alt_low, 80.0))
++            elif key in (ord("e"), ord("E")):
++                pose = flight.nudge(dyaw=15, bounds=fence, alt_range=(alt_low, 80.0))
++            elif key in (ord("r"), ord("R")):
++                pose = flight.nudge(dalt=2.0, bounds=fence, alt_range=(alt_low, 80.0))
++            elif key in (ord("f"), ord("F")):
++                pose = flight.nudge(dalt=-2.0, bounds=fence, alt_range=(alt_low, 80.0))
++            elif key in (ord("h"), ord("H")):
++                pose = flight.nudge(bounds=fence, alt_range=(alt_low, 80.0))
++            elif key in (ord("v"), ord("V")):
++                revisit_round(live=True)
++                moved = False
++            else:
++                moved = False
++            if moved:
++                *_, vis = capture(pose, "coverage")
++            key = show(_put_text(vis, help_txt, (10, cam.height - 34), 18), 1 if moved else 30)
++        cv2.destroyWindow(window)
++    else:
++        for k, wp in enumerate(wps):
++            if stop:
+                 break
+-        # 줄 끝(k 홀수)마다 애매한 후보를 끼워넣어 저고도 재방문
+-        if revisit and k % 2 == 1 and not stop:
+-            cands = Planner.order_revisits(mapper.candidates(conf_lo, conf_hi), (flight.x, flight.y))
+-            for o in cands:
+-                o.revisited = True
+-                n_rv += 1
+-                for pose in flight.fly_to((o.x, o.y), alt, "transit"):
+-                    capture(pose, "transit", do_detect=False)
+-                for pose in flight.fly_to((o.x, o.y), alt_low, "transit"):   # 하강
+-                    capture(pose, "transit", do_detect=False)
+-                before = o.cov_max
+-                for pose in flight.hover(rv_frames, "revisit"):
+-                    capture(pose, "revisit")
+-                for pose in flight.fly_to((o.x, o.y), alt, "transit"):       # 상승
+-                    capture(pose, "transit", do_detect=False)
+-                st = o.status(conf_lo, conf_hi)
+-                rv_log.append({"oid": o.oid, "x": round(o.x, 2), "y": round(o.y, 2), "cov_max": round(before, 3),
+-                               "rv_max": round(o.rv_max, 3), "result": st})
+-                print(f"  재방문 #{o.oid} ({o.cls}) 커버리지 {before:.2f} → 저고도 {max(o.rv_max, 0):.2f} ⇒ {st}")
++            for pose in flight.fly_to(wp, alt, "coverage"):
++                capture(pose, "coverage")
++                if frame_id >= max_frames:
++                    print(f"  ⚠️ 최대 프레임 {max_frames} 도달 — 중단")
++                    stop = True
++                    break
++            # 줄 끝(k 홀수)마다 애매한 후보를 끼워넣어 저고도 재방문
++            if revisit and k % 2 == 1 and not stop:
++                revisit_round()
+     vw.release()
+     if gif_frames:
+         import imageio
+@@ -711,7 +825,7 @@
+     cov_track = [t for t in flight.track if t[4] == "coverage"]
+     dist_cov = float(sum(math.hypot(b[1] - a[1], b[2] - a[2]) for a, b in zip(cov_track, cov_track[1:])))
+     summary = {
+-        "name": name, "model": str(weights), "device": "cpu", "bbox_epsg5186": list(bbox),
++        "name": name, "model": str(weights), "device": device, "manual": manual, "bbox_epsg5186": list(bbox),
+         "area_m2": float(B.area), "covered_m2": float(cover.area), "coverage_frac": float(cover.area / B.area),
+         "alt_m": alt, "alt_revisit_m": alt_low, "gsd_cm": round(cam.gsd(alt) * 100, 2),
+         "gsd_revisit_cm": round(cam.gsd(alt_low) * 100, 2), "camera": {"w": cam.width, "h": cam.height, "hfov": cam.hfov_deg},
+@@ -723,6 +837,8 @@
          "detections_raw": len(mapper.rows), "objects_total": len(mapper.objects),
          "revisits": n_rv, "revisit_log": rv_log, "eval": res,
          "wall_time_s": round(time.time() - t_wall, 1), "detect_time_s": round(t_det, 1),
@@ -810,7 +1111,7 @@ diff -ruN a/litter/sim_ortho.py b/litter/sim_ortho.py
      }
      (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
      with open(out / "detections.csv", "w", newline="", encoding="utf-8-sig") as f:
-@@ -752,6 +782,9 @@
+@@ -752,6 +868,9 @@
            f" (후보 포함 재현율 {e0['recall_incl_candidates']:.2f})")
      print(f"  재방문 포함: 확정 {e1['confirmed']} · 후보 {e1['candidates']} · 기각 {e1['rejected']} · 재현율 {e1['recall']:.2f}"
            f" · 정밀도 {e1['precision']:.2f} · 추가 비행 {summary['revisit_extra_dist_m']:.0f} m")
@@ -820,7 +1121,7 @@ diff -ruN a/litter/sim_ortho.py b/litter/sim_ortho.py
      print(f"  실행 {summary['wall_time_s']:.0f} s (탐지 {t_det:.0f} s) → {out}")
      return summary
  
-@@ -784,10 +817,15 @@
+@@ -784,10 +903,19 @@
      ap.add_argument("--max_frames", type=int, default=1500)
      ap.add_argument("--tol", type=float, default=1.0, help="라벨 적중 허용 거리 (m)")
      ap.add_argument("--seed", type=int, default=0)
@@ -828,12 +1129,16 @@ diff -ruN a/litter/sim_ortho.py b/litter/sim_ortho.py
 +    ap.add_argument("--reserve", type=float, default=0.25, help="귀환 예비 배터리 비율")
 +    ap.add_argument("--zones", help="공역 GeoJSON (없으면 예시 관제권 2개)")
 +    ap.add_argument("--mission-time", dest="mission_time", help="계획 비행 시각 '2026-10-02 10:00' (야간 판정용, 현지)")
++    ap.add_argument("--manual", action="store_true", help="키보드로 직접 비행 (시연). 창: WASD 이동·Q/E 기수·R/F 고도·V AI 재방문·ESC 종료")
++    ap.add_argument("--device", default="cpu", help="YOLO 장치: cpu / 0 (GPU). 수동 시연은 GPU 권장")
++    ap.add_argument("--hide-labels", dest="hide_labels", action="store_true", help="미니맵에서 업체 정답 라벨 숨김 (심사위원이 볼 때)")
      a = ap.parse_args(argv)
      run(a.name, a.model, a.bbox, a.size, a.alt, a.alt_low, a.speed, a.dt, a.overlap, a.conf_lo, a.conf_hi, a.merge_m,
          not a.no_revisit, a.rv_frames, tuple(a.wind), a.gust, a.jitter, a.gps_noise, a.yaw_noise,
 -        Camera(a.width, a.height, a.hfov), a.imgsz, a.max_frames, a.tol, a.seed)
 +        Camera(a.width, a.height, a.hfov), a.imgsz, a.max_frames, a.tol, a.seed,
-+        endurance_s=a.endurance, reserve=a.reserve, zones=a.zones, mission_time=a.mission_time)
++        endurance_s=a.endurance, reserve=a.reserve, zones=a.zones, mission_time=a.mission_time,
++        manual=a.manual, device=a.device, hide_labels=a.hide_labels)
  
  
  if __name__ == "__main__":
@@ -944,8 +1249,21 @@ diff -ruN a/litter/solar.py b/litter/solar.py
 +    return datetime.fromtimestamp(ts_utc, timezone(timedelta(hours=tz_hours))).strftime("%Y-%m-%d %H:%M")
 diff -ruN a/litter/telemetry.py b/litter/telemetry.py
 --- a/litter/telemetry.py	2026-10-01 18:18:57.558076590 +0000
-+++ b/litter/telemetry.py	2026-10-01 18:23:45.902268589 +0000
-@@ -110,6 +110,7 @@
++++ b/litter/telemetry.py	2026-10-02 01:46:00.156927972 +0000
+@@ -89,6 +89,12 @@
+     return rec
+ 
+ 
++def has_gps(rec):
++    """SRT 기록에 쓸 수 있는 위경도가 있나. 실내 비행이면 키가 없거나 0.000000 으로 찍힌다."""
++    lat, lon = rec.get("lat"), rec.get("lon")
++    return lat is not None and lon is not None and (abs(float(lat)) > 0.01 or abs(float(lon)) > 0.01)
++
++
+ def read_srt(path):
+     """DJI SRT → [{frame, t_ms, lat, lon, alt, yaw, pitch, roll}, ...].
+     기종마다 표기가 조금씩 달라서 [key: value] 쌍을 전부 긁은 뒤 이름으로 고른다."""
+@@ -110,6 +116,7 @@
          if dt:
              from datetime import datetime
              s = dt[1].replace("T", " ").replace(",", ".")

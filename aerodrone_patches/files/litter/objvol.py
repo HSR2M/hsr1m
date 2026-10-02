@@ -38,7 +38,7 @@ import numpy as np
 
 from .orbit3d import _center, _viewdir
 from .seg import _imread, _imwrite
-from .telemetry import read_srt
+from .telemetry import has_gps, read_srt
 from .volume import fit_ground, to_metric, to_metric_auto, volume_heightmap, volume_hull
 from . import solar
 
@@ -64,7 +64,8 @@ def read_ply(path):
 
 
 class Scene:
-    def __init__(self, orbit_dir, srt, min_track_m=10.0, scale="auto", tz_hours=9.0):
+    def __init__(self, orbit_dir, srt, min_track_m=10.0, scale="auto", tz_hours=9.0, origin=None, alt_offset=0.0):
+        """origin=(lat, lon): SRT에 GPS가 없을 때(실내 시연) 지도 기준점. alt_offset: 상대고도에서 뺄 탁자 높이 등(m)."""
         import pycolmap
 
         self.dir = Path(orbit_dir)
@@ -73,20 +74,30 @@ class Scene:
         self.cam = self.rec.cameras[self.imgs[0].camera_id]
         fidx = json.loads((self.dir / "frames" / "frames.json").read_text(encoding="utf-8"))
         tel = {r["frame"]: r for r in read_srt(srt)}
+        recs = [tel[fidx[i.name]] for i in self.imgs]
+        gps_ok = origin is None and all(has_gps(r) for r in recs)
+        if not gps_ok and origin is None:
+            raise SystemExit("SRT에 위경도가 없음(실내 비행?) → --origin LAT,LON 으로 기준점을 주면 GPS 없이 진행합니다")
         P = np.array([p.xyz for p in self.rec.points3D.values()])
         C = np.array([_center(i) for i in self.imgs])
         D = np.array([_viewdir(i) for i in self.imgs])
-        alt = np.array([tel[fidx[i.name]]["alt"] for i in self.imgs])
+        alt = np.array([float(r["alt"]) for r in recs]) - alt_offset
         from .geometry import Geo
-        geo = Geo(None, lon=tel[fidx[self.imgs[0].name]]["lon"])
-        gps = np.array([geo.to_xy(tel[fidx[i.name]]["lat"], tel[fidx[i.name]]["lon"]) for i in self.imgs])
+        if gps_ok:
+            geo = Geo(None, lon=recs[0]["lon"])
+            gps = np.array([geo.to_xy(r["lat"], r["lon"]) for r in recs])
+        else:
+            gps = None
         self.T, self.R, self.s, self.info = to_metric_auto(P, C, D, alt, gps, min_track_m=min_track_m, scale=scale)
+        self.info["gps_available"] = gps_ok
         if self.info.get("scale_warning"):
             print(f"⚠️ 축척: {self.info['scale_warning']}")
+        if not gps_ok:
+            print(f"GPS 없음 → 기준점 {origin} · 고도 축척(상대고도 {alt_offset:+.2f} m 보정)")
         self.p0 = self.info["p0"]
         # 촬영 위치·시각 (태양 고도 → 그림자 길이 설명용). SRT에 시각이 없으면 None
-        self.lat = float(np.median([tel[fidx[i.name]]["lat"] for i in self.imgs]))
-        self.lon = float(np.median([tel[fidx[i.name]]["lon"] for i in self.imgs]))
+        self.lat = float(np.median([r["lat"] for r in recs])) if gps_ok else float(origin[0])
+        self.lon = float(np.median([r["lon"] for r in recs])) if gps_ok else float(origin[1])
         self.tz_hours = tz_hours
         ts = [solar.local_to_utc(tel[fidx[i.name]]["dt_str"], tz_hours) for i in self.imgs if tel[fidx[i.name]].get("dt_str")]
         self.t_utc = float(np.median(ts)) if ts else None
@@ -402,6 +413,8 @@ def main(argv=None):
     ap.add_argument("--edge-erode-px", type=float, default=1.0, help="조밀 복원 경계 번짐 보정 폭(px). 0 = 보정 부피 생략")
     ap.add_argument("--dense-px", type=int, default=1200, help="조밀 복원에 쓴 max_image_size (GSD 계산용; 빠른 설정 1200, 기본 1600)")
     ap.add_argument("--tz", type=float, default=9.0, help="SRT 시각의 시간대 (태양 고도 계산용, KST 9)")
+    ap.add_argument("--origin", help="'LAT,LON' — SRT에 GPS가 없을 때(실내 시연) 기준점. orbit_map 과 같은 값을 줄 것")
+    ap.add_argument("--alt-offset", type=float, default=0.0, help="SRT 상대고도에서 뺄 값 m (바닥 이륙·탁자 위 모형이면 탁자 높이)")
     a = ap.parse_args(argv)
     det = None
     if a.det_weights:
@@ -413,7 +426,8 @@ def main(argv=None):
         det = lambda img: ym.predict(img, conf=a.det_conf, imgsz=1600, verbose=False, **dkw)[0].boxes.xyxy.cpu().numpy()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    sc = Scene(a.orbit, a.srt, min_track_m=a.min_track, scale=a.scale, tz_hours=a.tz)
+    origin = tuple(float(v) for v in a.origin.split(",")) if a.origin else None
+    sc = Scene(a.orbit, a.srt, min_track_m=a.min_track, scale=a.scale, tz_hours=a.tz, origin=origin, alt_offset=a.alt_offset)
     pts = read_ply(a.ply)[0] if a.ply else sc.sparse
     Pm = sc.T(pts).astype(np.float32)   # 지면 좌표(m)로 한 번만 변환
     del pts
