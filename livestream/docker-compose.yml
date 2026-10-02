@@ -1,0 +1,30 @@
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:1
+    restart: unless-stopped
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    environment:
+      # WebRTC ICE 후보에 공개될 주소 (도메인 또는 공인 IP)
+      MTX_WEBRTCADDITIONALHOSTS: ${PUBLIC_HOST:-localhost}
+    ports:
+      - "1935:1935"       # RTMP  (DJI Fly -> 서버)
+      - "8189:8189/udp"   # WebRTC 미디어
+
+  web:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - mediamtx
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./web:/srv:ro
+      - caddy_data:/data
+    ports:
+      - "80:80"
+      - "443:443"
+
+volumes:
+  caddy_data:

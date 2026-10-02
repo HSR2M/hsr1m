@@ -1,0 +1,43 @@
+logLevel: info
+
+rtmp: yes
+hls: yes
+webrtc: yes
+rtsp: no
+srt: no
+
+# 시청 지연을 줄이기 위한 LL-HLS (WebRTC 가 안 될 때의 대체 경로)
+hlsVariant: lowLatency
+hlsAlwaysRemux: yes
+
+webrtcLocalUDPAddress: :8189
+
+authMethod: internal
+authInternalUsers:
+  # 시청: 누구나 live 경로를 볼 수 있음
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: read
+        path: live
+
+  # 송출: DJI Fly 에서 아래 계정으로 접속 (비밀번호는 반드시 변경!)
+  - user: drone
+    pass: CHANGE_ME
+    ips: []
+    permissions:
+      - action: publish
+        path: live
+
+  # API/메트릭은 서버 내부(localhost)에서만
+  - user: any
+    pass:
+    ips: ['127.0.0.1', '::1']
+    permissions:
+      - action: api
+      - action: metrics
+      - action: pprof
+
+paths:
+  live:
