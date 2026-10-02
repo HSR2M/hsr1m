@@ -50,7 +50,11 @@ v5: 제목을 "정확한 해양쓰레기 측정을 통한 경제적 쓰레기 �
 cd deck
 npm install pptxgenjs react react-dom react-icons sharp
 NODE_PATH=$PWD/node_modules node build.js
+python3 postfix.py 붕붕이_3DLabs_제안.pptx   # 반드시 실행: 중복 shape id 정리
 ```
+
+`postfix.py`는 pptxgenjs가 슬라이드 번호(id 25)·표(id 16)에 고정 id를 써서 생기는 중복 id를 슬라이드마다 고유하게 다시 매긴다.
+이 단계를 빼면 PowerPoint가 "콘텐츠에 문제가 있어 복구" 창을 띄우고 복구 뒤 개체가 사라진다(LibreOffice·PDF 변환은 경고 없이 열려서 눈치채기 어렵다).
 
 `build.js` 끝의 `applyTheme`는 Claude pptx 스킬의 `scripts/apply_theme.js`를 쓴다(테마 색을 파일에 기록).
 그 파일이 없으면 해당 줄을 지우고 빌드해도 열리지만, 스킴 색이 Office 기본 팔레트로 보인다.
