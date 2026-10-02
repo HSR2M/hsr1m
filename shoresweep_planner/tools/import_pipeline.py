@@ -104,7 +104,9 @@ def export_ortho(tif: Path, out: Path) -> bool:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--repo", required=True, help="aerodrone_hackathon 체크아웃 폴더")
+    default_repo = ROOT.parent if (ROOT.parent / "runs").exists() else None   # 이 폴더가 aerodrone_hackathon 안에 있으면 그 저장소
+    ap.add_argument("--repo", default=str(default_repo) if default_repo else None, required=default_repo is None,
+                    help="aerodrone_hackathon 체크아웃 폴더 (이 폴더가 그 저장소 안에 있으면 자동)")
     ap.add_argument("--video", required=True, help="영상 번호 (예: 0015) — runs/orbit, runs/map 폴더 이름 앞부분")
     ap.add_argument("--out", default=str(ROOT / "input"), help="넣을 폴더 (기본 input/)")
     ap.add_argument("--name", default=None, help="현장 이름")
